@@ -5,7 +5,7 @@ const paths: Record<string, string> = {
  database: 'M3 6c0-5 18-5 18 0s-18 5-18 0zm0 0v12c0 5 18 5 18 0V6M3 12c0 5 18 5 18 0',
 
  search: 'm21 21-4.8-4.8M19 10.8a8.2 8.2 0 1 1-16.4 0 8.2 8.2 0 0 1 16.4 0',
- folder: 'M3 7h6l2-3h4l2 3h4v13H3z',
+ folder: 'M3 8V6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1M3 8h16a2 2 0 0 1 1.94 2.49l-2 8A2 2 0 0 1 17 20H5a2 2 0 0 1-2-2V8z',
  package: 'm12 3 9 5v9l-9 5-9-5V8zm0 10 9-5M3 8l9 5v9M7.5 5.5l9 5',
  arrow: 'm9 5 7 7-7 7',
  back: 'm14 5-7 7 7 7',

@@ -26,7 +26,7 @@ describe('architecture explorer', () => {
  it('navigates package → symbol → source and exposes diagnostics', async () => {
   render(<App/>)
   fireEvent.doubleClick(await screen.findByRole('button', { name: 'demo graph node' }))
-  fireEvent.click(await screen.findByRole('button', { name: 'Hello graph node' }))
+  fireEvent.click(await screen.findByRole('button', { name: /Hello public/ }))
   expect(await screen.findByText('demo.go')).toBeInTheDocument()
   expect(screen.getByLabelText('Source code')).toHaveTextContent('func Hello() {}')
   fireEvent.click(screen.getByRole('button', { name: /Partial analysis/ }))

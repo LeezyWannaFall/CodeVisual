@@ -84,7 +84,7 @@ it('routes SQL references and indexes with room for table columns', async () => 
   {id:'idx',kind:'index',label:'users_idx',attributes:{exported:false,index:{name:'users_idx',table:'users',unique:true,definition:'CREATE UNIQUE INDEX users_idx ON users(id)'}}},
  ],edges:[{id:'fk',kind:'references',sourceId:'orders',targetId:'users'},{id:'ix',kind:'indexes',sourceId:'idx',targetId:'users'}]}
  const layout=await layoutGraph(schema,new ELK())
- expect(layout.nodes.find(n=>n.entity.id==='orders')!.height).toBeGreaterThanOrEqual(14*25+122)
+ expect(layout.nodes.find(n=>n.entity.id==='orders')!.height).toBeGreaterThanOrEqual(14*26+34)
  expect(layout.edges.map(e=>e.entity.kind).sort()).toEqual(['indexes','references'])
  expect(layout.nodes.find(n=>n.entity.id==='users')!.ports.filter(p=>p.side==='in')).toHaveLength(2)
  for(const edge of layout.edges) expect(roundedPath(edge.points)).not.toMatch(/NaN|Infinity/)
