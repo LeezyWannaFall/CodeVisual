@@ -82,3 +82,81 @@ and 3 indexes** with status `complete` and no diagnostics. The script verified
 bounded Code/API/Database projections and unchanged input files. Initial response
 sizes: HTTP 21,836 bytes; Database 12,212 bytes. The application did not execute
 KitchenService or connect to its database.
+
+## Readable dependency routing — 2026-11-03
+
+Replaced Dagre placement plus generic smoothstep edges with ELK layered orthogonal
+routing. Each relationship has its own port, and the renderer preserves the
+computed bends. A local embedded Web Worker performs layout. No remote layout
+service is involved.
+
+The geometry fixture matches the 8-package / 12-import dependency shape of
+Go-URL-Shortener. Tests verify distinct port positions, no shared nonzero line
+segments, no routes through unrelated cards, cycle/disconnected-node handling,
+correct direction filtering, and attached endpoints after dragging.
+
+A production-browser test analyzed the actual Go-URL-Shortener checkout at
+`ad76b2d99bd9cb023ca7432e42c9d84aa43cee4d`. Selecting `handler` produced three nodes
+and two source-backed edges (`main → handler → model`); incoming/outgoing filters
+and restoring all 12 imports passed. The test also verifies focused cards remain
+inside the viewport when the inspector opens, and saves overview/focus screenshots.
+
+`make build test` passes (9 frontend tests); all 5 browser scenarios pass with:
+
+```sh
+cd web
+CODEVISUAL_TEST_SHORTENER=1 npm run test:e2e
+```
+
+The optional real-project test expects a sibling `Go-URL-Shortener` checkout;
+regular browser tests do not require that repository. Selecting a package now
+lays out only its immediate neighbors; All connections restores the loaded graph.
+Counts remain relative to that loaded graph, and the summary states the visible
+subset. Arrange recomputes routes after manual card movement.
+
+
+## Black theme and explicit focus — 2026-11-03
+
+Changed base surfaces to neutral black/gray and retained blue only for interaction
+accents. Incoming/outgoing relationships use two blue shades. All connections is
+now the default: clicking a node highlights it and opens the inspector without
+automatically activating Selected node or changing card positions. Compact focus
+is an explicit action.
+
+Browser regression coverage checks neutral dark backgrounds in the header,
+navigation, explorer, graph container, inspector, and footer. The real-shortener
+scenario verifies node/edge counts and card positions survive selection unchanged,
+then explicitly activates Selected node to check direction filtering.
+
+## Fixed cards and animated selection — 2026-11-03
+
+Disabled node dragging and keyboard deletion, and removed the minimap and manual
+Arrange control. Cards opt out of canvas panning so click/double-click handling
+remains reliable while the background can still be panned. Incident relationships
+of the selected node animate as dashed strokes; unrelated edges and crossing
+halos stay solid. Reduced-motion preferences stop the animation.
+
+The five browser scenarios pass. Coverage includes attempted card dragging with
+unchanged positions, absent minimap, selected-only animation counts, computed dash
+styles and changing dash offset, double-click navigation, and preserving the
+complete graph on ordinary selection. The production binary was rebuilt with
+these assets.
+
+## Database map and source reading panel — 2026-11-03
+
+Database now defaults to a dedicated Map with table columns, PK/FK markers,
+foreign-key relationships, and index-to-table links. List remains available for
+DDL details. SQL cards use their own measured layout dimensions and retain the
+read-only graph interactions and animated selection.
+
+Inspecting a source-backed node automatically widens the inspector to 44vw
+(with desktop limits), while small screens use a bounded overlay. Source text
+preserves indentation and wraps by default; Wrap lines can restore horizontal
+scrolling without changing file line numbers.
+
+`make build test` passed with 10 frontend checks. All 6 browser scenarios passed,
+including the SQL map/list switch, selecting a table to open its source, and the
+actual GetByFullUrl method in Go-URL-Shortener. The latter verifies expanded panel
+width, unchanged line counts when toggling wrapping, no horizontal clipping with
+wrapping enabled, and a usable 600px viewport. Screenshots cover the map and wide
+source panel. The single binary was rebuilt with the updated frontend assets.

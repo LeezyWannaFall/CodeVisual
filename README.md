@@ -1,7 +1,7 @@
 # CodeVisual
 
 Local architecture explorer for Go projects. Analyze package imports, functions,
-methods, structs, interfaces, and named types in a dark blue interactive graph.
+methods, structs, interfaces, and named types in a black interactive interface with blue accents.
 Separate API and Database sections inventory chi registrations and PostgreSQL DDL.
 Everything runs on your machine: no LLM, cloud service, database, or account.
 
@@ -40,8 +40,9 @@ registrations, and SQL declarations. The inspector can be collapsed using its
 header button or the toolbar toggle; the selected item is retained and the
 preference survives reloads. Selecting an item opens the inspector again.
 
-The minimap uses matching SVG/container dimensions. Click to recenter, drag to
-pan, or scroll to zoom. It remains above the graph legend.
+Cards have fixed positions. Drag the background to pan, scroll to zoom, or use
+the fit-to-view controls. Selecting a card animates its incident relationships
+with moving dashed lines. The graph does not include a minimap.
 
 ### API
 
@@ -55,6 +56,12 @@ mounts, dynamic paths, and conditional/loop registrations appear in diagnostics;
 these are not claimed as known runtime endpoints.
 
 ### Database
+
+The Database tab opens its own **Map** of tables and indexes. Table cards show
+columns and PK/FK markers; arrows follow declared foreign keys to referenced
+tables and indexes to their tables. Cards remain fixed, with the same pan/zoom,
+selection, and optional neighbor-focus controls as the Code graph. **List** keeps
+the detailed DDL inventory available alongside the map.
 
 Reads `.sql` files without a database connection. Displays `CREATE TABLE` columns,
 table constraints, inline/table foreign keys, and `CREATE [UNIQUE] INDEX`, with
@@ -76,9 +83,12 @@ matching table declaration.
 - The left search finds packages and symbols throughout the module. The graph
   filter searches only the current view.
 - Filter symbols by kind or exported visibility; optionally show external imports.
-- Drag nodes, pan, zoom, use fit-to-view, or navigate with the minimap. Selecting a
-  package highlights direct incoming and outgoing imports.
-- Select a declaration to read its source with highlighted lines. If the file has
+- Pan the background, zoom, or use fit-to-view. Selecting a
+  package highlights its relationships and opens its inspector; the graph stays complete.
+- Select a declaration to read its source with highlighted lines. The inspector
+  automatically widens for source and wraps long lines by default. Toggle
+  **Wrap lines** to use horizontal scrolling instead. Line numbers and indentation
+  remain tied to the original file. If the file has
   changed since analysis, restart the command; stale locations are not reused.
 - Click the analysis status in the header to inspect diagnostics.
 
@@ -143,7 +153,7 @@ cmd/codevisual → internal/cli
 - `graph` validates node/edge IDs and builds an immutable, indexed snapshot plus
   bounded projections. Semantic IDs do not depend on the checkout's absolute path.
 - `server` uses chi for the read-only REST API and serves the embedded SPA.
-- `web` uses React, TypeScript, Tailwind, XYFlow, and Dagre. There is no runtime CDN.
+- `web` uses React, TypeScript, Tailwind, XYFlow, and ELK. There is no runtime CDN.
 
 The Code graph includes module/directory/package containment, package imports,
 and explicit method declarations. Independent `httproutes` and `sqlschema`
@@ -183,3 +193,22 @@ Request flow, live database connections, migration execution, Docker
 infrastructure, live reload, persistence, IDE integration, and plugin loading
 remain outside this release. New analyzers can later return nodes, edges, and diagnostics through the
 existing analyzer interface without changing the CLI or frontend transport.
+
+### Reading dependency diagrams
+
+The Code view uses layered orthogonal routing with a separate input/output port
+for each relationship. Arrow `A → B` means **A imports B**; it does not represent
+request execution. Layout runs in an embedded local Web Worker.
+
+Clicking a package highlights it and opens its inspector without changing the
+active graph mode or card positions. **All connections** is the default. To open
+a compact graph of the selected package and its direct neighbors, explicitly
+click **Selected node**. **Incoming & outgoing** can then be narrowed to either
+direction; **All connections** restores the complete loaded view. Incoming
+relationships are light blue and outgoing relationships are a stronger blue. Counters refer to the loaded graph
+before the focus filter; the summary shows how many nodes and edges remain.
+
+Card dragging is disabled, preserving the automatic layout and its routed lines.
+Selected relationships use animated dashed strokes; unrelated relationships stay
+solid. Reduced-motion preferences disable the animation. The viewport refits
+when the inspector expands or collapses.
