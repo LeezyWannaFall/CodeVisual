@@ -1,0 +1,1 @@
+{"analysisId":"fixture","nodes":[{"id":"package_demo","kind":"package","label":"demo","attributes":{"importPath":"example.test/demo","exported":false}}],"edges":[],"totalNodes":1,"hiddenNodes":0}
