@@ -35,7 +35,7 @@ analysis with diagnostics.
 
 ## Explore a project
 
-Use the **Code / API / Database** tabs to switch between Go architecture, HTTP
+Use the **Code / API / Database / Request Flow** tabs to switch between Go architecture, HTTP
 registrations, and SQL declarations. The inspector can be collapsed using its
 header button or the toolbar toggle; the selected item is retained and the
 preference survives reloads. Selecting an item opens the inspector again.
@@ -48,8 +48,13 @@ with moving dashed lines. The graph does not include a minimap.
 
 Lists chi `Get`, `Post`, other verb methods, `Handle`/`HandleFunc`, and
 `Method`/`MethodFunc` with static paths, handlers, middleware, registration scope,
-and source. Supports inline `Route`/`Group`, `With`/`Use`, local router-parameter
-helpers, and resolvable `Mount` builders, including builders stored in variables.
+and source. Supports inline and resolved named `Route`/`Group` callbacks, typed chi router
+aliases, `With`/`Use`, middleware helpers, delegated routers, and resolvable `Mount`
+builders, including builders stored in variables.
+Use **Open handler** to inspect a resolved handler declaration and open middleware
+source from the inspector. A factory returning a known function links to that
+returned function; **Open factory** separately opens its construction code.
+Custom `http.Handler` objects resolve to their `ServeHTTP` method when known.
 Filter by method or search path/handler text. Paths are relative to their named
 builder scope unless a supported mount supplies the prefix. Unknown external
 mounts, dynamic paths, and conditional/loop registrations appear in diagnostics;
@@ -124,16 +129,15 @@ npx playwright install chromium
 npm run test:e2e             # build bin/codevisual first; uses port 17331
 ```
 
-A production smoke test runs the binary from a temporary working directory,
-checks embedded assets and APIs, samples process-tree RSS on Linux, and compares
-input files before and after analysis:
+Optional browser checks can also use local sibling checkouts:
 
 ```sh
-python3 scripts/verify_projects.py . /path/to/prepared/module
+cd web
+CODEVISUAL_TEST_SELF=1 CODEVISUAL_TEST_BOOKING=1 CODEVISUAL_TEST_SHORTENER=1 npm run test:e2e
 ```
 
-It neither downloads dependencies nor runs analyzed code. See
-[verification notes](docs/verification.md) for the initial real-project run.
+The optional scenarios expect `../Room-Booking-Service` and `../Go-URL-Shortener`
+next to this repository, with dependencies already available locally.
 
 ## Architecture
 
@@ -159,8 +163,11 @@ The Code graph includes module/directory/package containment, package imports,
 and explicit method declarations. Independent `httproutes` and `sqlschema`
 analyzers add route/table/index nodes to the same snapshot; dedicated bounded
 projections keep them separate from the Code graph. Interface members and struct fields appear in
-symbol details. It does **not** infer calls or interface implementations.
-See [API contract](docs/api.md) for DTOs and endpoints.
+symbol details. Call relationships belong to the separate Request Flow
+projection; interface implementation matches are explicitly marked as possible.
+The read-only API uses `/api/v1`: `/project`, `/tree`, `/graph`, `/search`,
+`/nodes/{id}`, `/files/{id}`, and `/diagnostics`. Graph projections use `level`;
+Request Flow additionally accepts `rootId`, `depth`, and `includePossible`.
 
 ## Analysis boundaries and safety
 
@@ -189,7 +196,7 @@ See [API contract](docs/api.md) for DTOs and endpoints.
 This is static analysis of one build configuration. A partial graph is useful,
 but should be interpreted together with its diagnostics.
 
-Request flow, live database connections, migration execution, Docker
+Live database connections, migration execution, Docker
 infrastructure, live reload, persistence, IDE integration, and plugin loading
 remain outside this release. New analyzers can later return nodes, edges, and diagnostics through the
 existing analyzer interface without changing the CLI or frontend transport.
@@ -212,3 +219,86 @@ Card dragging is disabled, preserving the automatic layout and its routed lines.
 Selected relationships use animated dashed strokes; unrelated relationships stay
 solid. Reduced-motion preferences disable the animation. The viewport refits
 when the inspector expands or collapses.
+
+
+### Request Flow
+
+Open **Request flow** from an API route or a callable's inspector, or use the
+Request Flow tab and choose an entry point. The diagram follows source call sites
+from the registered handler through module-local functions and methods. Each node
+opens its source; each edge retains representative call-site evidence in the API.
+
+This is a **static potential-call graph**, not an executed request trace or a
+promise of branch order. Direct calls use resolved Go symbols. Interface dispatch
+stops at an **INTERFACE** boundary by default. Enable **Possible implementations**
+to explore local methods satisfying that interface; these nodes and dashed edges
+are marked possible, never confirmed runtime bindings. Dynamic function values
+stop at **DYNAMIC** boundaries. External calls are hidden by default and can be
+shown as terminal **EXTERNAL** nodes.
+
+Depth is configurable from 1 to 10 (default 6), with at most 200 visible nodes.
+The notice reports truncation and omitted external/candidate targets. Recursive
+calls terminate safely. Calls inside a closure belong to that closure; constructing
+an unused closure does not make its body part of a handler. `go` and `defer` call
+sites are distinguished in edge metadata/tooltips. Factory execution during route
+registration is not placed on the request-time path.
+
+Analysis remains offline and source-only. It does not run handlers or middleware,
+perform pointer analysis, prove injected interface bindings, expand unknown
+higher-order callbacks, or trace across dependency source outside the module.
+
+
+Package symbols open in a compact **Overview**: types own collapsible lists of
+their declared methods. Interfaces, free functions, and remaining declarations
+share a separate compact list; fields and contracts appear in the inspector. Selecting a method
+opens its source; **Declaration graph** retains the full structural diagram.
+Grouping uses declaration ownership only, not inferred calls or naming patterns.
+Filters and paging apply to the current set of declarations, so a filtered-out
+owner leaves its matching methods in the remaining-declarations list.
+
+
+Package/directory dependency maps default to **Simplified**: a direct import line
+is hidden when another dependency path connects the same packages in the current
+view. All packages and dependency reachability are preserved; cyclic groups keep
+their internal edges. This is a visual reduction, not a removal of real imports.
+**All imports** restores every direct relationship. Explicit **Selected node**
+focus always shows that package's actual direct connections. Guidance and controls
+occupy a dedicated header above the canvas.
+
+Selecting a package on the package map loads its **Package overview below the
+map**, on the same scrollable page. Expand types there and select declarations to
+open source in the inspector; the package map stays in place. Double-click and
+Explorer navigation still offer a dedicated symbol view. Inspector members and
+signatures use formatted Go code blocks.
+
+The database map uses compact ER table cards with yellow primary keys and blue
+foreign keys. Relationships attach to their declared source and target column
+rows, including composite keys. Indexes appear within their table; their complete
+DDL and source remain available in List. Unknown target columns stay at the table
+header rather than being attached to an assumed field. No cardinality is inferred.
+
+Project sections are arranged vertically above Explorer. Inspector controls are
+local to the right panel. Interfaces share the compact **Functions & other
+declarations** list; selecting one opens its definition/source in the inspector.
+Table index footers contain subdued, keyboard-accessible buttons that open the
+actual index and its DDL without selecting the table or changing map views.
+
+Explorer folder labels expand their branch; directories containing a single Go
+package open that package's declarations directly. Package-map selection preserves
+scroll position during and after loading a replacement overview. Inspector controls
+are local to the right panel, and source centering scrolls only the code area.
+
+Go source, declaration signatures, fields/members, and route handler expressions
+share local syntax highlighting. Multiline raw strings/comments and struct tags
+retain their colors across lines. Source text, line numbers, wrapping, and selection
+ranges remain unchanged. Members use a compact numbered code panel.
+
+The inspector supports vertical resizing between details and source as well as
+horizontal resizing of the full panel. Drag the divider, use its Up/Down keys, or
+double-click to reset; the ratio is saved locally. Type overview cards show methods,
+while fields/members remain in the inspector. Folder labels toggle on repeated clicks.
+
+Database source, DDL, constraints, and column types now share local SQL highlighting.
+Request Flow's entry picker supports route/handler search, keyboard navigation,
+and Enter/Escape. API routes use individual cards with distinct handler, middleware,
+status, and action sections.
