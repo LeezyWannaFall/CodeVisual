@@ -46,6 +46,8 @@ with moving dashed lines. The graph does not include a minimap.
 
 ### API
 
+![CodeVisual screenshot 2](pics/image2.png)
+
 Lists chi `Get`, `Post`, other verb methods, `Handle`/`HandleFunc`, and
 `Method`/`MethodFunc` with static paths, handlers, middleware, registration scope,
 and source. Supports inline and resolved named `Route`/`Group` callbacks, typed chi router
@@ -61,6 +63,8 @@ mounts, dynamic paths, and conditional/loop registrations appear in diagnostics;
 these are not claimed as known runtime endpoints.
 
 ### Database
+
+![CodeVisual screenshot 3](pics/image3.png)
 
 The Database tab opens its own **Map** of tables and indexes. Table cards show
 columns and PK/FK markers; arrows follow declared foreign keys to referenced
@@ -81,6 +85,8 @@ inventory. Explicit foreign keys and indexes connect only to an unambiguous
 matching table declaration.
 
 ### Code
+
+![CodeVisual screenshot 1](pics/image.png)
 
 - Select a node to inspect details; double-click a package to explore its symbols.
 - Use the directory view to group imports, then double-click a directory to drill
