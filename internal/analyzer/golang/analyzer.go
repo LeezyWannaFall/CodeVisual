@@ -162,7 +162,7 @@ func (Analyzer) Analyze(ctx context.Context, p *project.Project) (graph.Analysis
 					signatureDecl := *d
 					signatureDecl.Body = nil
 					signatureDecl.Doc = nil
-					attrs := graph.Attributes{Exported: ast.IsExported(d.Name.Name), Receiver: receiver, Signature: printed(pkg.Fset, &signatureDecl), Documentation: d.Doc.Text()}
+					attrs := graph.Attributes{ImportPath: pkg.ImportPath, RelativePath: filepath.ToSlash(pkg.Directory), Exported: ast.IsExported(d.Name.Name), Receiver: receiver, Signature: printed(pkg.Fset, &signatureDecl), Documentation: d.Doc.Text()}
 					if pkg.TypesInfo != nil {
 						if obj := pkg.TypesInfo.Defs[d.Name]; obj != nil {
 							if fn, ok := obj.(*types.Func); ok { // Access resolved types without requiring successful whole-project typing.

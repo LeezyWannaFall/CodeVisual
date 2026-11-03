@@ -32,6 +32,9 @@ type SourceRange struct {
 	EndColumn   int    `json:"endColumn"`
 }
 type Attributes struct {
+	Resolution    string     `json:"resolution,omitempty"`
+	External      bool       `json:"external,omitempty"`
+	Possible      bool       `json:"possible,omitempty"`
 	HTTP          *HTTPRoute `json:"http,omitempty"`
 	Table         *SQLTable  `json:"table,omitempty"`
 	Index         *SQLIndex  `json:"index,omitempty"`
@@ -55,13 +58,15 @@ type Node struct {
 	Attributes Attributes   `json:"attributes"`
 }
 type Edge struct {
-	ID       string       `json:"id"`
-	Kind     string       `json:"kind"`
-	SourceID string       `json:"sourceId"`
-	TargetID string       `json:"targetId"`
-	Evidence *SourceRange `json:"evidence,omitempty"`
-	Count    int          `json:"count,omitempty"`
-	Derived  bool         `json:"derived,omitempty"`
+	Resolution string       `json:"resolution,omitempty"`
+	Invocation string       `json:"invocation,omitempty"`
+	ID         string       `json:"id"`
+	Kind       string       `json:"kind"`
+	SourceID   string       `json:"sourceId"`
+	TargetID   string       `json:"targetId"`
+	Evidence   *SourceRange `json:"evidence,omitempty"`
+	Count      int          `json:"count,omitempty"`
+	Derived    bool         `json:"derived,omitempty"`
 }
 type Diagnostic struct {
 	Severity string       `json:"severity"`
@@ -90,6 +95,7 @@ type Snapshot struct {
 	Edges         []Edge       `json:"edges"`
 	Diagnostics   []Diagnostic `json:"diagnostics"`
 	Files         []File       `json:"files"`
+	outgoing      map[string][]Edge
 	nodes         map[string]Node
 	files         map[string]File
 }
@@ -121,7 +127,9 @@ func NewSnapshot(p Project, r AnalysisResult) (*Snapshot, error) {
 		s.nodes[n.ID] = n
 	}
 	edgeIDs := map[string]bool{}
+	s.outgoing = map[string][]Edge{}
 	for _, e := range s.Edges {
+		s.outgoing[e.SourceID] = append(s.outgoing[e.SourceID], e)
 		if edgeIDs[e.ID] {
 			return nil, fmt.Errorf("duplicate edge %s", e.ID)
 		}
@@ -167,6 +175,9 @@ func NewSnapshot(p Project, r AnalysisResult) (*Snapshot, error) {
 	if err != nil {
 		return nil, err
 	}
+	for id := range s.outgoing {
+		sort.Slice(s.outgoing[id], func(i, j int) bool { return s.outgoing[id][i].ID < s.outgoing[id][j].ID })
+	}
 	s.AnalysisID = Hash(encoded)[:24]
 	return s, nil
 }
@@ -174,16 +185,18 @@ func (s *Snapshot) Node(id string) (Node, bool) { n, ok := s.nodes[id]; return n
 func (s *Snapshot) File(id string) (File, bool) { f, ok := s.files[id]; return f, ok }
 
 type View struct {
-	AnalysisID  string `json:"analysisId"`
-	Nodes       []Node `json:"nodes"`
-	Edges       []Edge `json:"edges"`
-	TotalNodes  int    `json:"totalNodes"`
-	HiddenNodes int    `json:"hiddenNodes"`
+	Flow        *FlowInfo `json:"flow,omitempty"`
+	AnalysisID  string    `json:"analysisId"`
+	Nodes       []Node    `json:"nodes"`
+	Edges       []Edge    `json:"edges"`
+	TotalNodes  int       `json:"totalNodes"`
+	HiddenNodes int       `json:"hiddenNodes"`
 }
 type ViewOptions struct {
-	Level, PackageID, GroupID, Query, Kind, Method string
-	IncludeExternal, ExportedOnly                  bool
-	Offset                                         int
+	Level, PackageID, GroupID, Query, Kind, Method, RootID string
+	IncludeExternal, ExportedOnly, IncludePossible         bool
+	Depth                                                  int
+	Offset                                                 int
 }
 
 func (s *Snapshot) Tree() []Node {

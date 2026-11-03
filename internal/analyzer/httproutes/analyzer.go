@@ -14,22 +14,26 @@ import (
 	"strconv"
 	"strings"
 
+	"codevisual/internal/analyzer/symbols"
 	"codevisual/internal/graph"
 	"codevisual/internal/project"
 )
 
-type Analyzer struct{}
+type Analyzer struct{ Index *symbols.Index }
 type function struct {
 	decl    *ast.FuncDecl
 	pkg     *project.Package
 	aliases map[string]bool
 }
 type router struct {
-	builder       *function
-	prefix, scope string
-	middleware    []string
+	identity          string
+	builder           *function
+	prefix, scope     string
+	middleware        []string
+	middlewareTargets []graph.TargetRef
 }
 type walker struct {
+	index         *symbols.Index
 	project       *project.Project
 	result        graph.AnalysisResult
 	functions     map[types.Object]*function
@@ -41,8 +45,12 @@ type walker struct {
 	ctx           context.Context
 }
 
-func (Analyzer) Analyze(ctx context.Context, p *project.Project) (graph.AnalysisResult, error) {
-	w := &walker{project: p, functions: map[types.Object]*function{}, named: map[string]*function{}, files: map[string]bool{}, registrations: map[string]bool{}, stack: map[*function]bool{}, ctx: ctx}
+func (a Analyzer) Analyze(ctx context.Context, p *project.Project) (graph.AnalysisResult, error) {
+	index := a.Index
+	if index == nil {
+		index = symbols.New(p)
+	}
+	w := &walker{index: index, project: p, functions: map[types.Object]*function{}, named: map[string]*function{}, files: map[string]bool{}, registrations: map[string]bool{}, stack: map[*function]bool{}, ctx: ctx}
 	for i := range p.Packages {
 		pkg := &p.Packages[i]
 		for _, file := range pkg.Syntax {
@@ -80,6 +88,15 @@ func (Analyzer) Analyze(ctx context.Context, p *project.Project) (graph.Analysis
 		}
 		builders := map[string]*function{}
 		ast.Inspect(f.decl.Body, func(n ast.Node) bool {
+			if ret, ok := n.(*ast.ReturnStmt); ok {
+				for _, expr := range ret.Results {
+					if c, ok := expr.(*ast.CallExpr); ok {
+						if target := w.resolve(f, c.Fun); target != nil && rootFunction(target) {
+							consumed[target] = true
+						}
+					}
+				}
+			}
 			if a, ok := n.(*ast.AssignStmt); ok {
 				for i, e := range a.Rhs {
 					if i >= len(a.Lhs) {
@@ -100,6 +117,20 @@ func (Analyzer) Analyze(ctx context.Context, p *project.Project) (graph.Analysis
 			call, ok := n.(*ast.CallExpr)
 			if !ok {
 				return true
+			}
+			if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+				callback := -1
+				if sel.Sel.Name == "Route" {
+					callback = 1
+				}
+				if sel.Sel.Name == "Group" {
+					callback = 0
+				}
+				if callback >= 0 && len(call.Args) > callback {
+					if target := w.resolve(f, call.Args[callback]); target != nil {
+						consumed[target] = true
+					}
+				}
 			}
 			if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Mount" && len(call.Args) == 2 {
 				if id, ok := call.Args[1].(*ast.Ident); ok {
@@ -131,6 +162,18 @@ func (Analyzer) Analyze(ctx context.Context, p *project.Project) (graph.Analysis
 	return w.result, nil
 }
 func (w *walker) resolve(f *function, e ast.Expr) *function {
+	if target := w.index.Function(f.pkg, e); target != nil {
+		if target.Object != nil {
+			if fn := w.functions[target.Object]; fn != nil {
+				return fn
+			}
+		}
+		for _, fn := range w.all {
+			if fn.decl == target.Decl {
+				return fn
+			}
+		}
+	}
 	if f.pkg.TypesInfo != nil {
 		var obj types.Object
 		switch e := e.(type) {
@@ -154,6 +197,12 @@ func routerParameters(f *function) []string {
 		return out
 	}
 	for _, field := range f.decl.Type.Params.List {
+		if f.pkg.TypesInfo != nil && chiRouterType(f.pkg.TypesInfo.TypeOf(field.Type)) {
+			for _, n := range field.Names {
+				out = append(out, n.Name)
+			}
+			continue
+		}
 		if s, ok := field.Type.(*ast.SelectorExpr); ok {
 			if x, ok := s.X.(*ast.Ident); ok && f.aliases[x.Name] && s.Sel.Name == "Router" {
 				for _, n := range field.Names {
@@ -164,29 +213,35 @@ func routerParameters(f *function) []string {
 	}
 	return out
 }
-func (w *walker) run(f *function, state router, params map[string]router) {
+func (w *walker) run(f *function, state router, params map[string]router) map[string]router {
 	if w.ctx.Err() != nil {
-		return
+		return nil
 	}
 	if w.stack[f] {
 		w.note(f, f.decl, "http_recursive_builder", "Recursive router builder was not expanded")
-		return
+		return nil
 	}
 	w.stack[f] = true
 	defer delete(w.stack, f)
 	env := map[string]router{}
 	for _, name := range routerParameters(f) {
-		env[name] = state
+		value := state
+		if value.identity == "" {
+			value.identity = state.scope + ":" + name
+		}
+		env[name] = value
 	}
 	for k, v := range params {
 		env[k] = v
 	}
 	w.block(f, f.decl.Body, env, state)
+	return env
 }
 func clone(env map[string]router) map[string]router {
 	out := map[string]router{}
 	for k, v := range env {
 		v.middleware = append([]string{}, v.middleware...)
+		v.middlewareTargets = append([]graph.TargetRef{}, v.middlewareTargets...)
 		out[k] = v
 	}
 	return out
@@ -234,7 +289,11 @@ func (w *walker) block(f *function, b *ast.BlockStmt, env map[string]router, sta
 		case *ast.ReturnStmt:
 			for _, e := range s.Results {
 				if c, ok := e.(*ast.CallExpr); ok {
-					w.call(f, c, env, state)
+					if target := w.resolve(f, c.Fun); target != nil && rootFunction(target) && len(routerParameters(target)) == 0 {
+						w.run(target, state, nil)
+					} else {
+						w.call(f, c, env, state)
+					}
 				}
 			}
 		case *ast.BlockStmt:
@@ -263,6 +322,7 @@ func (w *walker) routerExpr(f *function, e ast.Expr, env map[string]router, stat
 		return router{}, false
 	}
 	if id, ok := s.X.(*ast.Ident); ok && f.aliases[id.Name] && (s.Sel.Name == "NewRouter" || s.Sel.Name == "NewMux") {
+		state.identity = f.pkg.ImportPath + ":" + strconv.Itoa(int(c.Pos()))
 		return state, true
 	}
 	if s.Sel.Name == "With" {
@@ -271,8 +331,11 @@ func (w *walker) routerExpr(f *function, e ast.Expr, env map[string]router, stat
 			return router{}, false
 		}
 		r.middleware = append([]string{}, r.middleware...)
+		r.identity += ":with:" + strconv.Itoa(int(c.Pos()))
+		r.middlewareTargets = append([]graph.TargetRef{}, r.middlewareTargets...)
 		for _, arg := range c.Args {
 			r.middleware = append(r.middleware, printed(f, arg))
+			r.middlewareTargets = append(r.middlewareTargets, w.targetRef(f, arg))
 		}
 		return r, true
 	}
@@ -293,9 +356,14 @@ func (w *walker) call(f *function, c *ast.CallExpr, env map[string]router, state
 	if name == "Use" {
 		for _, arg := range c.Args {
 			r.middleware = append(r.middleware, printed(f, arg))
+			r.middlewareTargets = append(r.middlewareTargets, w.targetRef(f, arg))
 		}
-		if id, ok := s.X.(*ast.Ident); ok {
-			env[id.Name] = r
+		for name, value := range env {
+			if value.identity == r.identity {
+				value.middleware = append([]string{}, r.middleware...)
+				value.middlewareTargets = append([]graph.TargetRef{}, r.middlewareTargets...)
+				env[name] = value
+			}
 		}
 		return
 	}
@@ -316,9 +384,17 @@ func (w *walker) call(f *function, c *ast.CallExpr, env map[string]router, state
 		if len(c.Args) <= index {
 			return
 		}
-		callback, ok := c.Args[index].(*ast.FuncLit)
+		callbackExpr := c.Args[index]
+		if literal, ok := callbackExpr.(*ast.ParenExpr); ok {
+			callbackExpr = literal.X
+		}
+		callback, ok := callbackExpr.(*ast.FuncLit)
 		if !ok {
-			w.note(f, c, "http_callback", "Named route callbacks are not expanded")
+			if target := w.resolve(f, c.Args[index]); target != nil {
+				w.run(target, r, nil)
+				return
+			}
+			w.note(f, c, "http_callback", "Route callback could not be resolved statically")
 			return
 		}
 		local := clone(env)
@@ -398,7 +474,13 @@ func (w *walker) call(f *function, c *ast.CallExpr, env map[string]router, state
 		return
 	}
 	w.registrations[id] = true
-	route := &graph.HTTPRoute{Method: method, Path: path, Handler: handler, Middleware: append([]string{}, r.middleware...), Scope: r.scope}
+	target := w.index.Handler(f.pkg, c.Args[handlerIndex], name == "Handle" || name == "Method")
+	if target.ID == "" {
+		boundary := w.index.Boundary(f.pkg, c.Args[handlerIndex])
+		boundary.FactoryID = target.FactoryID
+		target = boundary
+	}
+	route := &graph.HTTPRoute{HandlerSource: w.index.Definition(target.ID), HandlerID: target.ID, HandlerResolution: target.Resolution, HandlerFactoryID: target.FactoryID, MiddlewareTargets: append([]graph.TargetRef{}, r.middlewareTargets...), Method: method, Path: path, Handler: handler, Middleware: append([]string{}, r.middleware...), Scope: r.scope}
 	w.result.Nodes = append(w.result.Nodes, graph.Node{ID: id, Kind: "httpRoute", Label: method + " " + path, ParentID: graph.ID("package", f.pkg.ImportPath), Source: source, Attributes: graph.Attributes{ImportPath: f.pkg.ImportPath, Signature: method + " " + path + " → " + handler, HTTP: route}})
 }
 func (w *walker) helper(f *function, c *ast.CallExpr, env map[string]router, state router) {
@@ -424,7 +506,28 @@ func (w *walker) helper(f *function, c *ast.CallExpr, env map[string]router, sta
 		}
 	}
 	if len(bindings) > 0 {
-		w.run(target, state, bindings)
+		changed := w.run(target, state, bindings)
+		position = 0
+		for _, field := range target.decl.Type.Params.List {
+			for _, name := range field.Names {
+				if position < len(c.Args) {
+					if arg, ok := c.Args[position].(*ast.Ident); ok {
+						old, exists := env[arg.Name]
+						updated, found := changed[name.Name]
+						if exists && found && old.identity == updated.identity {
+							for key, value := range env {
+								if value.identity == old.identity {
+									value.middleware = updated.middleware
+									value.middlewareTargets = updated.middlewareTargets
+									env[key] = value
+								}
+							}
+						}
+					}
+				}
+				position++
+			}
+		}
 	}
 }
 func literal(f *function, e ast.Expr) (string, bool) {
@@ -510,6 +613,13 @@ func rootFunction(f *function) bool {
 	if len(routerParameters(f)) > 0 {
 		return true
 	}
+	if f.decl.Type.Results != nil && f.pkg.TypesInfo != nil {
+		for _, field := range f.decl.Type.Results.List {
+			if chiRouterType(f.pkg.TypesInfo.TypeOf(field.Type)) {
+				return true
+			}
+		}
+	}
 	found := false
 	ast.Inspect(f.decl.Body, func(n ast.Node) bool {
 		if c, ok := n.(*ast.CallExpr); ok {
@@ -530,4 +640,24 @@ func functionScope(f *function) string {
 		receiver = printed(f, f.decl.Recv.List[0].Type) + "."
 	}
 	return f.pkg.ImportPath + "." + receiver + f.decl.Name.Name
+}
+
+func (w *walker) targetRef(f *function, e ast.Expr) graph.TargetRef {
+	target := w.index.Resolve(f.pkg, e)
+	return graph.TargetRef{Source: w.index.Definition(target.ID), Name: printed(f, e), NodeID: target.ID, Resolution: target.Resolution, FactoryID: target.FactoryID}
+}
+func chiRouterType(t types.Type) bool {
+	if t == nil {
+		return false
+	}
+	t = types.Unalias(t)
+	if pointer, ok := t.(*types.Pointer); ok {
+		t = types.Unalias(pointer.Elem())
+	}
+	named, ok := t.(*types.Named)
+	if !ok || named.Obj().Pkg() == nil {
+		return false
+	}
+	path := named.Obj().Pkg().Path()
+	return (path == "github.com/go-chi/chi/v5" || path == "github.com/go-chi/chi") && (named.Obj().Name() == "Router" || named.Obj().Name() == "Mux")
 }

@@ -14,8 +14,8 @@ func Routes() chi.Router {
 	r.Route("/admin", func(admin chi.Router) { admin.Post("/refresh", Refresh) })
 	return r
 }
-func UserRoutes() chi.Router                      { r := chi.NewRouter(); r.Get("/users/{id}", ShowUser); return r }
-func Health(http.ResponseWriter, *http.Request)   {}
-func ShowUser(http.ResponseWriter, *http.Request) {}
-func Refresh(http.ResponseWriter, *http.Request)  {}
-func Logging(next http.Handler) http.Handler      { return next }
+func UserRoutes() chi.Router                          { r := chi.NewRouter(); r.Get("/users/{id}", ShowUser); return r }
+func Health(http.ResponseWriter, *http.Request)       {}
+func ShowUser(w http.ResponseWriter, r *http.Request) { _ = userService.User(r.URL.Path) }
+func Refresh(http.ResponseWriter, *http.Request)      {}
+func Logging(next http.Handler) http.Handler          { return next }

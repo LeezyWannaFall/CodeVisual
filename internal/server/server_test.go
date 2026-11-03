@@ -36,7 +36,7 @@ func request(h http.Handler, path string) *httptest.ResponseRecorder {
 }
 func TestAPIAndSource(t *testing.T) {
 	h, root := handler(t)
-	for _, path := range []string{"/api/v1/project", "/api/v1/tree", "/api/v1/graph", "/api/v1/graph?level=http", "/api/v1/graph?level=database", "/api/v1/graph?level=symbols&packageId=pkg", "/api/v1/nodes/fn", "/api/v1/files/file_demo", "/api/v1/diagnostics", "/api/v1/search?q=hello"} {
+	for _, path := range []string{"/api/v1/project", "/api/v1/tree", "/api/v1/graph", "/api/v1/graph?level=http", "/api/v1/graph?level=flow&rootId=fn", "/api/v1/graph?level=database", "/api/v1/graph?level=symbols&packageId=pkg", "/api/v1/nodes/fn", "/api/v1/files/file_demo", "/api/v1/diagnostics", "/api/v1/search?q=hello"} {
 		w := request(h, path)
 		if w.Code != 200 || !json.Valid(w.Body.Bytes()) {
 			t.Fatalf("%s: %d %s", path, w.Code, w.Body.String())
@@ -45,7 +45,7 @@ func TestAPIAndSource(t *testing.T) {
 			t.Fatal("absolute root leaked")
 		}
 	}
-	for _, path := range []string{"/api/v1/graph?level=invalid", "/api/v1/graph?level=symbols", "/api/v1/graph?offset=-1", "/api/v1/graph?includeExternal=maybe"} {
+	for _, path := range []string{"/api/v1/graph?level=invalid", "/api/v1/graph?level=flow", "/api/v1/graph?level=flow&rootId=fn&depth=0", "/api/v1/graph?level=flow&rootId=fn&includePossible=invalid", "/api/v1/graph?level=symbols", "/api/v1/graph?offset=-1", "/api/v1/graph?includeExternal=maybe"} {
 		if w := request(h, path); w.Code != 400 {
 			t.Fatalf("expected 400: %s %d", path, w.Code)
 		}

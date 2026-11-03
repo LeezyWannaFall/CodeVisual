@@ -4,6 +4,7 @@ package chi
 import "net/http"
 
 type Router interface {
+	Handle(string, http.Handler)
 	Get(string, http.HandlerFunc)
 	Post(string, http.HandlerFunc)
 	Use(...func(http.Handler) http.Handler)

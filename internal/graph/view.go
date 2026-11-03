@@ -8,6 +8,9 @@ import (
 
 // View computes a bounded projection. Pagination is deterministic and never invents imports.
 func (s *Snapshot) View(o ViewOptions) (View, error) {
+	if o.Level == "flow" {
+		return s.Flow(o)
+	}
 	if o.Level == "" {
 		o.Level = "packages"
 	}
@@ -123,7 +126,7 @@ func (s *Snapshot) View(o ViewOptions) (View, error) {
 		}
 	} else {
 		for _, e := range s.Edges {
-			if visible[e.SourceID] && visible[e.TargetID] {
+			if !flowEdge(e.Kind) && e.Kind != "uses_middleware" && visible[e.SourceID] && visible[e.TargetID] {
 				v.Edges = append(v.Edges, e)
 			}
 		}

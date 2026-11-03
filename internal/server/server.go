@@ -121,13 +121,21 @@ func (a *api) graph(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	for _, key := range []string{"includeExternal", "exportedOnly"} {
+	for _, key := range []string{"includeExternal", "exportedOnly", "includePossible"} {
 		if v := q.Get(key); v != "" && v != "true" && v != "false" {
 			fail(w, 400, "invalid_query", key+" must be true or false")
 			return
 		}
 	}
-	view, err := a.snapshot.View(graph.ViewOptions{Level: q.Get("level"), PackageID: q.Get("packageId"), GroupID: q.Get("groupId"), Query: q.Get("q"), Kind: q.Get("kind"), Method: q.Get("method"), IncludeExternal: q.Get("includeExternal") == "true", ExportedOnly: q.Get("exportedOnly") == "true", Offset: offset})
+	depth := 0
+	if value := q.Get("depth"); value != "" {
+		depth, err = strconv.Atoi(value)
+		if err != nil || depth < 1 || depth > 10 {
+			fail(w, 400, "invalid_query", "depth must be between 1 and 10")
+			return
+		}
+	}
+	view, err := a.snapshot.View(graph.ViewOptions{Level: q.Get("level"), RootID: q.Get("rootId"), Depth: depth, IncludePossible: q.Get("includePossible") == "true", PackageID: q.Get("packageId"), GroupID: q.Get("groupId"), Query: q.Get("q"), Kind: q.Get("kind"), Method: q.Get("method"), IncludeExternal: q.Get("includeExternal") == "true", ExportedOnly: q.Get("exportedOnly") == "true", Offset: offset})
 	if err != nil {
 		fail(w, 400, "invalid_query", err.Error())
 		return

@@ -1,12 +1,25 @@
 package graph
 
 // HTTPRoute records a source registration, not an observed runtime endpoint.
+type TargetRef struct {
+	Source     *SourceRange `json:"source,omitempty"`
+	Name       string       `json:"name"`
+	NodeID     string       `json:"nodeId,omitempty"`
+	Resolution string       `json:"resolution"`
+	FactoryID  string       `json:"factoryId,omitempty"`
+}
+
 type HTTPRoute struct {
-	Method     string   `json:"method"`
-	Path       string   `json:"path"`
-	Handler    string   `json:"handler"`
-	Middleware []string `json:"middleware"`
-	Scope      string   `json:"scope"`
+	HandlerSource     *SourceRange `json:"handlerSource,omitempty"`
+	HandlerID         string       `json:"handlerId,omitempty"`
+	HandlerResolution string       `json:"handlerResolution,omitempty"`
+	HandlerFactoryID  string       `json:"handlerFactoryId,omitempty"`
+	MiddlewareTargets []TargetRef  `json:"middlewareTargets"`
+	Method            string       `json:"method"`
+	Path              string       `json:"path"`
+	Handler           string       `json:"handler"`
+	Middleware        []string     `json:"middleware"`
+	Scope             string       `json:"scope"`
 }
 type SQLColumn struct {
 	Name        string `json:"name"`

@@ -17,9 +17,11 @@ import (
 	"time"
 
 	"codevisual/internal/analyzer"
+	"codevisual/internal/analyzer/callgraph"
 	goanalyzer "codevisual/internal/analyzer/golang"
 	"codevisual/internal/analyzer/httproutes"
 	"codevisual/internal/analyzer/sqlschema"
+	"codevisual/internal/analyzer/symbols"
 	"codevisual/internal/graph"
 	"codevisual/internal/project"
 	"codevisual/internal/server"
@@ -94,14 +96,20 @@ func Run(ctx context.Context, args []string, out io.Writer) error {
 	if err = p.Load(ctx); err != nil {
 		return err
 	}
+	index := symbols.New(p)
 	results := []graph.AnalysisResult{}
-	for _, worker := range []analyzer.Analyzer{goanalyzer.Analyzer{}, httproutes.Analyzer{}, sqlschema.Analyzer{}} {
+	var routes graph.AnalysisResult
+	for _, worker := range []analyzer.Analyzer{goanalyzer.Analyzer{}, httproutes.Analyzer{Index: index}, sqlschema.Analyzer{}, callgraph.Analyzer{Index: index}} {
 		result, err := worker.Analyze(ctx, p)
 		if err != nil {
 			return err
 		}
+		if _, ok := worker.(httproutes.Analyzer); ok {
+			routes = result
+		}
 		results = append(results, result)
 	}
+	results = append(results, callgraph.ConnectRoutes(routes, index))
 	result := graph.Merge(results...)
 	snapshot, err := graph.NewSnapshot(p.Project, result)
 	if err != nil {
