@@ -9,7 +9,7 @@ export function RoutedEdge({ id, sourceX, sourceY, targetX, targetY, markerEnd, 
  const path = roundedPath(movedPoints(data.points, { x: sourceX, y: sourceY }, { x: targetX, y: targetY }))
  return <g className="routed-relationship" data-relation={data.relation}>
   <title>{data.description}</title>
-  <path className="edge-halo" d={path} fill="none" stroke="#030303" strokeWidth={7} pointerEvents="none"/>
+  <path className="edge-halo" d={path} fill="none" stroke="var(--background)" strokeWidth={7} pointerEvents="none"/>
   <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} interactionWidth={18}/>
  </g>
 }

@@ -99,7 +99,7 @@ function Canvas({ view: originalView, selected, onSelect, onOpen }: Props) {
   const labels = new Map(view.nodes.map(n => [n.id, n.attributes.importPath || n.attributes.relativePath || n.label]))
   setEdges(layout.edges.filter(e => shown.has(e.entity.id)).map(({ entity: e, points, sourceHandle, targetHandle }) => {
    const relation = e.sourceId === selection?.id ? 'outgoing' : e.targetId === selection?.id ? 'incoming' : 'context'
-   const color = relation === 'outgoing' ? '#3b82f6' : relation === 'incoming' ? '#a9caff' : '#686868'
+   const color = relation === 'outgoing' ? '#3b82f6' : relation === 'incoming' ? 'var(--accent-light)' : 'var(--graph-edge, #686868)'
    return {
     id: e.id, source: e.sourceId, target: e.targetId, sourceHandle, targetHandle, type: 'routed', animated: relation !== 'context',
     ariaLabel: e.label ?? `${labels.get(e.sourceId)} ${e.kind === 'imports' ? 'imports' : e.kind === 'references' ? 'has a foreign key to' : e.kind === 'indexes' ? 'indexes' : e.kind} ${labels.get(e.targetId)}`,
@@ -131,7 +131,7 @@ function Canvas({ view: originalView, selected, onSelect, onOpen }: Props) {
   </div>
   <div className="graph-canvas-viewport">
  <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onNodeClick={(_, n) => onSelect(n.data.entity)} onNodeDoubleClick={(_, n) => onOpen(n.data.entity)} nodesConnectable={false} nodesDraggable={false} deleteKeyCode={null} colorMode="dark" minZoom={0.08} maxZoom={2} proOptions={{ hideAttribution: true }}>
-  <Background variant={BackgroundVariant.Dots} color="#272727" gap={22} size={1}/>
+  <Background variant={BackgroundVariant.Dots} color="var(--graph-dots, #272727)" gap={22} size={1}/>
   {arranging && <div className="layout-status" role="status">Arranging nodes and routing connections…</div>}
   {error && <div className="layout-status error-note" role="alert">{error}<button onClick={() => setRevision(v => v + 1)}>Retry layout</button></div>}
   <Controls showInteractive={false}/>

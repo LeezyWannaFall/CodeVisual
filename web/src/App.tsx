@@ -1,3 +1,4 @@
+import { flushSync } from 'react-dom'
 import { RoutePicker } from './components/RoutePicker'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { get } from './api/client'
@@ -17,6 +18,35 @@ interface NavigationState {
  symbolView: 'overview' | 'graph'; databaseView: 'map' | 'list'; flowRoot: GraphNode | null; flowDepth: number; includePossible: boolean
 }
 export default function App() {
+ const themeTransition = useRef(false)
+ const [theme, setTheme] = useState<'dark' | 'light'>(() => { try { return localStorage.getItem('codevisual.theme') === 'light' ? 'light' : 'dark' } catch { return 'dark' } })
+ useLayoutEffect(() => {
+  document.documentElement.dataset.theme = theme
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#f8fafc' : '#050505')
+  try { localStorage.setItem('codevisual.theme', theme) } catch { /* Storage can be unavailable. */ }
+ }, [theme])
+ function toggleTheme(button: HTMLButtonElement) {
+  if (themeTransition.current) return
+  const changeTheme = () => setTheme(current => current === 'dark' ? 'light' : 'dark')
+  if (!document.startViewTransition || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+   changeTheme()
+   return
+  }
+  const { left, top, width, height } = button.getBoundingClientRect()
+  const x = left + width / 2, y = top + height / 2
+  const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y))
+  const root = document.documentElement
+  root.style.setProperty('--theme-reveal-x', `${x}px`)
+  root.style.setProperty('--theme-reveal-y', `${y}px`)
+  root.style.setProperty('--theme-reveal-radius', `${Math.ceil(radius)}px`)
+  root.classList.add('theme-transition')
+  themeTransition.current = true
+  const transition = document.startViewTransition(() => flushSync(changeTheme))
+  void transition.finished.catch(() => { /* Interrupted transitions still apply the theme. */ }).finally(() => {
+   root.classList.remove('theme-transition')
+   themeTransition.current = false
+  })
+ }
  const [navigationHistory, setNavigationHistory] = useState<NavigationState[]>([])
  const [project, setProject] = useState<ProjectInfo | null>(null)
  const [tree, setTree] = useState<GraphNode[]>([])
@@ -105,7 +135,7 @@ export default function App() {
  const scope = tree.find(n => n.id === (level === 'symbols' ? packageId : groupId))
 
  return <div className="app-shell">
-  <header className="app-header"><a className="brand" href="/" aria-label="CodeVisual home"><span className="brand-mark"><Icon name="graph" size={22}/></span><span>Code<span className="brand-light">Visual</span></span><span className="version">v0.1</span></a><span className="header-divider"/><span className="header-project"><Icon name="folder"/>{project?.project.rootName ?? 'Architecture explorer'}</span><div className="header-right"><span className="local-pill"><span className="status-dot"/>LOCAL SESSION</span><button className={`diagnostics-button ${project?.status === 'partial' ? 'warning' : ''}`} onClick={() => setShowDiagnostics(v => !v)}><Icon name={project?.status === 'partial' ? 'info' : 'check'} size={14}/>{project?.status === 'partial' ? 'Partial analysis' : 'Analysis complete'}<span>{diagnostics.length}</span></button></div></header>
+  <header className="app-header"><a className="brand" href="/" aria-label="CodeVisual home"><span className="brand-mark"><Icon name="graph" size={22}/></span><span>Code<span className="brand-light">Visual</span></span><span className="version">v0.1</span></a><span className="header-divider"/><span className="header-project"><Icon name="folder"/>{project?.project.rootName ?? 'Architecture explorer'}</span><div className="header-right"><button className="theme-toggle" aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} title={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={event => toggleTheme(event.currentTarget)}><Icon name={theme === 'dark' ? 'sun' : 'moon'}/></button><span className="local-pill"><span className="status-dot"/>LOCAL SESSION</span><button className={`diagnostics-button ${project?.status === 'partial' ? 'warning' : ''}`} onClick={() => setShowDiagnostics(v => !v)}><Icon name={project?.status === 'partial' ? 'info' : 'check'} size={14}/>{project?.status === 'partial' ? 'Partial analysis' : 'Analysis complete'}<span>{diagnostics.length}</span></button></div></header>
 
  <div className="workspace"><div className="workspace-sidebar">  <nav className="workspace-tabs" aria-label="Project sections">
  <button className={section === 'code' ? 'active' : ''} aria-pressed={section === 'code'} onClick={() => overview()}><Icon name="code"/>Code<span>{project?.statistics.package ?? 0}</span></button>

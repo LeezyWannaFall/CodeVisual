@@ -1,5 +1,7 @@
 import type { CSSProperties } from 'react'
 const paths: Record<string, string> = {
+ sun: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5',
+ moon: 'M20.5 13A8.5 8.5 0 0 1 11 3.5 8.5 8.5 0 1 0 20.5 13',
  panel: 'M3 4h18v16H3zM15 4v16m-5-11 3 3-3 3',
  api: 'M8 5H4v14h4m8-14h4v14h-4M9 12h6m-3-3 3 3-3 3',
  database: 'M3 6c0-5 18-5 18 0s-18 5-18 0zm0 0v12c0 5 18 5 18 0V6M3 12c0 5 18 5 18 0',
