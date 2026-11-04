@@ -2130,3 +2130,78 @@ html.theme-transition::view-transition-new(root) {
 @media (prefers-reduced-motion: reduce) {
   html.theme-transition::view-transition-new(root) { animation: none; }
 }
+
+/* Native disclosures retain keyboard behavior while smoothly changing height. */
+.symbol-methods, .symbol-standalone, .members-code, .schema-constraints {
+  interpolate-size: allow-keywords;
+}
+@supports (interpolate-size: allow-keywords) {
+  :is(.symbol-methods, .symbol-standalone, .members-code, .schema-constraints)::details-content {
+    height: 0;
+    opacity: 0;
+    overflow: clip;
+    transition: height 320ms cubic-bezier(.22, 1, .36, 1), opacity 200ms ease,
+      content-visibility 320ms allow-discrete;
+  }
+  :is(.symbol-methods, .symbol-standalone, .members-code, .schema-constraints)[open]::details-content {
+    height: auto;
+    opacity: 1;
+  }
+}
+.symbol-methods > summary, .symbol-standalone > summary, .schema-constraints > summary {
+  list-style: none;
+  transition: background-color 180ms ease, color 180ms ease;
+}
+:is(.symbol-methods, .symbol-standalone, .schema-constraints) > summary::-webkit-details-marker { display: none; }
+:is(.symbol-methods, .symbol-standalone, .schema-constraints) > summary::before {
+  content: '›';
+  display: inline-block;
+  width: 12px;
+  margin-right: 6px;
+  font-size: 16px;
+  line-height: 1;
+  transform-origin: 45% 50%;
+  transition: transform 260ms cubic-bezier(.22, 1, .36, 1);
+}
+:is(.symbol-methods, .symbol-standalone, .schema-constraints)[open] > summary::before { transform: rotate(90deg); }
+:is(.symbol-methods, .symbol-standalone, .members-code, .schema-constraints) > summary:hover {
+  background: var(--surface-raised);
+  color: var(--accent-light);
+}
+:is(.symbol-methods, .symbol-standalone, .members-code, .schema-constraints) > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+  border-radius: 6px;
+}
+.symbol-group {
+  transition: border-color 220ms ease, box-shadow 220ms ease, transform 220ms ease;
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .symbol-group:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px #00000012;
+    border-color: var(--accent-light);
+  }
+}
+.symbol-member, .search-result {
+  transition: background-color 180ms ease, color 180ms ease, box-shadow 180ms ease;
+}
+.symbol-member:active, .search-result:active { box-shadow: inset 3px 0 var(--accent); }
+:is(.route-actions, .view-switch, .symbol-view-switch, .connection-mode) button,
+.theme-toggle, .back-button {
+  transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease,
+    box-shadow 180ms ease, transform 180ms cubic-bezier(.22, 1, .36, 1);
+}
+:is(.route-actions, .view-switch, .symbol-view-switch, .connection-mode) button:active:not(:disabled),
+.theme-toggle:active, .back-button:active:not(:disabled) { transform: scale(.97); }
+.symbol-group, .route-entry, .schema-card { animation-duration: 320ms; animation-fill-mode: backwards; }
+:is(.symbol-group, .route-entry, .schema-card):nth-child(2) { animation-delay: 25ms; }
+:is(.symbol-group, .route-entry, .schema-card):nth-child(3) { animation-delay: 50ms; }
+:is(.symbol-group, .route-entry, .schema-card):nth-child(4) { animation-delay: 75ms; }
+:is(.symbol-group, .route-entry, .schema-card):nth-child(n+5) { animation-delay: 100ms; }
+@media (prefers-reduced-motion: reduce) {
+  :is(.symbol-methods, .symbol-standalone, .members-code, .schema-constraints)::details-content {
+    transition: none;
+  }
+  .symbol-group, .route-entry, .schema-card { animation-delay: 0ms !important; }
+}
