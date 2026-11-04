@@ -32,7 +32,7 @@ export function Explorer({ tree, selected, onOpen }: { tree: GraphNode[]; select
    const open = expanded.has(n.id)
    return <div key={n.id} className="tree-branch"><div className={`tree-row ${selected?.id === n.id ? 'selected' : ''}`} style={{ paddingLeft: 6 }}>
     {hasChildren ? <button className={`tree-toggle ${open ? 'open' : ''}`} aria-label={`${open ? 'Collapse' : 'Expand'} ${n.label}`} onClick={() => setExpanded(old => { const next = new Set(old); if (next.has(n.id)) next.delete(n.id); else next.add(n.id); return next })}><Icon name="arrow" size={11}/></button> : <span className="w-3 shrink-0"/>}
-    <button className="tree-label" title={n.attributes.importPath ?? n.attributes.relativePath ?? n.label} onClick={() => openEntry(n)} aria-expanded={hasChildren ? open : undefined}><span className={`tree-entry-icon ${n.kind}`}><Icon name={n.kind === 'package' ? 'package' : 'folder'} size={14}/></span><span className="tree-entry-name"><span className="truncate">{n.kind === 'module' ? 'Project root' : n.label}</span>{n.kind === 'package' && <small>Go package</small>}</span></button>
+    <button className="tree-label" title={n.attributes.importPath ?? n.attributes.relativePath ?? n.label} onClick={() => openEntry(n)} aria-expanded={hasChildren ? open : undefined}><span className={`tree-entry-icon ${n.kind}`}><Icon name={n.kind === 'package' ? 'package' : 'folder'} size={13}/></span><span className="tree-entry-name"><span className="truncate">{n.kind === 'module' ? 'Project root' : n.label}</span></span></button>
     {hasChildren && <span className="tree-count">{children.get(n.id)?.length}</span>}
    </div>{hasChildren && open && <div className="tree-children">{branch(n.id, depth + 1)}</div>}</div>
   })
