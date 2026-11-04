@@ -1,5 +1,5 @@
 import { SQLCode } from '../../components/SQLCode'
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Background, BackgroundVariant, Controls, Handle, MarkerType, Position, ReactFlow, ReactFlowProvider, useEdgesState, useNodesState, useReactFlow, useStore, type Node, type NodeProps } from '@xyflow/react'
 import type { GraphNode, GraphView } from '../../api/types'
 import { KindBadge } from '../../components/Icon'
@@ -45,6 +45,7 @@ function Canvas({ view: originalView, selected, onSelect, onOpen }: Props) {
  }, [originalView, selected?.id, onSelect])
  const view = useMemo(() => schemaView(originalView), [originalView])
  const { fitView } = useReactFlow()
+ const fittedLayout = useRef<GraphLayout | null>(null)
  const width = useStore(s => s.width)
  const height = useStore(s => s.height)
  const [nodes, setNodes, onNodesChange] = useNodesState<VisualNode>([])
@@ -110,8 +111,9 @@ function Canvas({ view: originalView, selected, onSelect, onOpen }: Props) {
   }))
  }, [selection, shown, related, layout, view, setNodes, setEdges, mode])
  useEffect(() => {
-  if (!layout || !width || !height) return
-  const frame = requestAnimationFrame(() => { void fitView({ padding: 0.18, duration: 0, maxZoom: 1 }) })
+  // Inspector resizing must preserve the user's pan and zoom; fit only a new layout.
+  if (!layout || !width || !height || fittedLayout.current === layout) return
+  const frame = requestAnimationFrame(() => { fittedLayout.current = layout; void fitView({ padding: 0.18, duration: 0, maxZoom: 1 }) })
   return () => cancelAnimationFrame(frame)
  }, [layout, fitView, width, height])
  return <SchemaInteraction.Provider value={schemaInteraction}><div className="graph-canvas-shell">

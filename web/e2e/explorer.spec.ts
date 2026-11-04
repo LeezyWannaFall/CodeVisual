@@ -364,3 +364,31 @@ test('SQL has highlighting and the route picker searches, selects, and closes wi
  await page.getByRole('button',{name:/^API/}).click()
  expect(await page.getByLabel('HTTP routes', {exact:true}).evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true)
 })
+
+for (const focused of [false, true]) {
+ test(`declaration selection preserves package map viewport and focus (${focused ? 'selected node' : 'all connections'})`, async ({ page }) => {
+  await page.goto('/')
+  const model = page.locator('.react-flow__node').filter({ has: page.locator('.node-name', { hasText: /^model$/ }) })
+  await model.click()
+  await expect(page.locator('.package-below-map')).toContainText('Reader')
+  if (focused) await page.getByRole('button', { name: 'Selected node', exact: true }).click()
+  await expect(page.getByText('Arranging nodes and routing connections…')).toHaveCount(0)
+  await page.locator('.react-flow__controls-zoomin').click()
+  // Allow the control's zoom animation to settle before inspecting source.
+  await expect.poll(() => page.locator('.react-flow__viewport').evaluate(el => el.getAnimations().length)).toBe(0)
+  await page.waitForTimeout(400)
+  const viewport = await page.locator('.react-flow__viewport').getAttribute('style')
+  const positions = await page.locator('.react-flow__node').evaluateAll(nodes => nodes.map(n => (n as HTMLElement).style.transform))
+  const count = await page.locator('.react-flow__node').count()
+  await page.locator('.package-below-map .symbol-standalone > summary').click()
+  await page.locator('.package-below-map .symbol-member').filter({ hasText: 'Reader' }).click()
+  await expect(page.getByLabel('Source code')).toContainText('type Reader interface')
+  await expect(page.getByRole('button', { name: focused ? 'Selected node' : 'All connections', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(model.locator('.entity-node')).toHaveClass(/active/)
+  // Wait through the inspector width transition and ResizeObserver callbacks.
+  await page.waitForTimeout(400)
+  await expect(page.locator('.react-flow__viewport')).toHaveAttribute('style', viewport!)
+  await expect(page.locator('.react-flow__node')).toHaveCount(count)
+  expect(await page.locator('.react-flow__node').evaluateAll(nodes => nodes.map(n => (n as HTMLElement).style.transform))).toEqual(positions)
+ })
+}
