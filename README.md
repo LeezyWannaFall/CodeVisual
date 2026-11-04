@@ -106,3 +106,7 @@ npm run test:e2e
 
 Built with Go, chi, React, TypeScript, XYFlow, and ELK. The frontend is embedded
 in the binary; no runtime CDN is needed.
+
+## License
+
+Licensed under the [MIT License](LICENSE). Copyright (c) 2026 LeezyWannaFall.
