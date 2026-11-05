@@ -65,3 +65,46 @@ describe('architecture explorer', () => {
   expect(await screen.findByText('demo.go')).toBeInTheDocument()
  })
 })
+
+it('finds a flow entry point beyond the first 200 routes', async () => {
+ const original = globalThis.fetch
+ const routes: GraphNode[] = Array.from({ length: 201 }, (_, i) => ({
+  id: `route-${i}`, kind: 'httpRoute', label: `GET /route-${i}`, attributes: { exported: false, http: { method: 'GET', path: `/route-${i}`, handler: 'Hello', middleware: [], scope: 'demo.Routes' } },
+ }))
+ vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
+  const url = new URL(input, 'http://localhost')
+  if (url.pathname.endsWith('/graph') && url.searchParams.get('level') === 'http') {
+   const offset = Number(url.searchParams.get('offset') ?? 0)
+   const nodes = routes.slice(offset, offset + 200)
+   return { ok: true, json: async () => ({ analysisId: 'a', nodes, edges: [], totalNodes: routes.length, hiddenNodes: routes.length - nodes.length }) }
+  }
+  return original(input, init)
+ }))
+ render(<App/> )
+ await screen.findByRole('button', { name: 'demo graph node' })
+ fireEvent.click(screen.getByRole('button', { name: /Request Flow/ }))
+ fireEvent.click(screen.getByRole('combobox', { name: 'Flow entry point' }))
+ fireEvent.change(screen.getByLabelText('Search routes'), { target: { value: '/route-200' } })
+ fireEvent.click(screen.getByRole('option', { name: /route-200/ }))
+ expect(screen.getByRole('combobox', { name: 'Flow entry point' })).toHaveTextContent('/route-200')
+ await waitFor(() => expect(requests.some(p => p.includes('rootId=route-200'))).toBe(true))
+})
+
+it('shows a later route-page error and retries loading', async () => {
+ const original = globalThis.fetch
+ let fail = true
+ vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
+  const url = new URL(input, 'http://localhost')
+  if (url.pathname.endsWith('/graph') && url.searchParams.get('level') === 'http') {
+   const offset = Number(url.searchParams.get('offset') ?? 0)
+   if (offset > 0 && fail) return { ok: false, status: 503, json: async () => ({ error: { code: 'unavailable', message: 'Route page unavailable' } }) }
+   return { ok: true, json: async () => ({ analysisId: 'a', nodes: [pkg], edges: [], totalNodes: 2, hiddenNodes: 1 }) }
+  }
+  return original(input, init)
+ }))
+ render(<App/> )
+ expect(await screen.findByRole('alert')).toHaveTextContent('Route page unavailable')
+ fail = false
+ fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+ expect(await screen.findByRole('button', { name: 'demo graph node' })).toBeInTheDocument()
+})

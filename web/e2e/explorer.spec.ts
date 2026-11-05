@@ -392,3 +392,29 @@ for (const focused of [false, true]) {
   expect(await page.locator('.react-flow__node').evaluateAll(nodes => nodes.map(n => (n as HTMLElement).style.transform))).toEqual(positions)
  })
 }
+
+test('Request Flow can select a route from the second API page', async ({ page, request }) => {
+ const response = await request.get('http://127.0.0.1:17332/api/v1/graph?level=http')
+ expect(response.ok()).toBe(true)
+ const graph = await response.json()
+ const last = graph.nodes.find((n: { label: string }) => n.label === 'GET /health')
+ expect(last).toBeTruthy()
+ const routes = [
+  ...Array.from({ length: 200 }, (_, i) => ({ ...last, id: `generated-${i}`, label: `GET /generated-${i}`, attributes: { ...last.attributes, http: { ...last.attributes.http, path: `/generated-${i}` } } })),
+  last,
+ ]
+ await page.route('**/api/v1/graph?*', async route => {
+  const url = new URL(route.request().url())
+  if (url.searchParams.get('level') !== 'http') { await route.continue(); return }
+  const offset = Number(url.searchParams.get('offset') ?? 0)
+  const nodes = routes.slice(offset, offset + 200)
+  await route.fulfill({ json: { ...graph, nodes, totalNodes: 201, hiddenNodes: 201 - nodes.length } })
+ })
+ await page.goto('http://127.0.0.1:17332/')
+ await page.getByRole('button', { name: /^Request Flow/ }).click()
+ await page.getByRole('combobox', { name: 'Flow entry point' }).click()
+ await page.getByLabel('Search routes').fill('/health')
+ await page.getByRole('option', { name: /\/health/ }).click()
+ await expect(page.getByRole('combobox', { name: 'Flow entry point' })).toContainText('/health')
+ await expect(page.locator('.react-flow__node').filter({ has: page.locator('.node-name', { hasText: /^Health$/ }) })).toHaveCount(1)
+})

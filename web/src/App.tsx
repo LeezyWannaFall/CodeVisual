@@ -1,7 +1,7 @@
 import { flushSync } from 'react-dom'
 import { RoutePicker } from './components/RoutePicker'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { get } from './api/client'
+import { get, getRoutes } from './api/client'
 import type { Diagnostic, GraphNode, GraphView, Level, ProjectInfo } from './api/types'
 import { Icon } from './components/Icon'
 import { Explorer } from './features/explorer/Explorer'
@@ -80,8 +80,8 @@ export default function App() {
  useEffect(() => { try { localStorage.setItem('codevisual.inspectorCollapsed', String(inspectorCollapsed)) } catch { /* Storage may be unavailable in private mode. */ } }, [inspectorCollapsed])
  useEffect(() => {
   const controller = new AbortController(); setError('')
-  Promise.all([get<ProjectInfo>('/project', controller.signal), get<GraphNode[]>('/tree', controller.signal), get<Diagnostic[]>('/diagnostics', controller.signal), get<GraphView>('/graph?level=http', controller.signal)])
-   .then(([p, t, d, r]) => { setRoutes(r.nodes.filter(n => n.kind === 'httpRoute')); setProject(p); setTree(t); setDiagnostics(d); if ((p.statistics.package ?? 0) > 200) setLevel('directories') })
+  Promise.all([get<ProjectInfo>('/project', controller.signal), get<GraphNode[]>('/tree', controller.signal), get<Diagnostic[]>('/diagnostics', controller.signal), getRoutes(controller.signal)])
+   .then(([p, t, d, r]) => { setRoutes(r); setProject(p); setTree(t); setDiagnostics(d); if ((p.statistics.package ?? 0) > 200) setLevel('directories') })
    .catch(e => { if (!controller.signal.aborted) { setError(e.message); setLoading(false) } })
   return () => controller.abort()
  }, [revision])
