@@ -34,10 +34,13 @@ type Options struct {
 	Tags      []string
 }
 
+// Version is set by release builds using -ldflags.
+var Version = "dev"
+
 func Parse(args []string, out io.Writer) (Options, error) {
 	opts := Options{Port: 7331}
 	if len(args) == 0 || args[0] != "analyze" {
-		return opts, fmt.Errorf("usage: codevisual analyze PATH [--port 7331] [--no-browser] [--tags tag1,tag2]")
+		return opts, fmt.Errorf("usage: codevisual analyze PATH [--port 7331] [--no-browser] [--tags tag1,tag2]; codevisual --version")
 	}
 	fs := flag.NewFlagSet("analyze", flag.ContinueOnError)
 	fs.SetOutput(out)
@@ -77,6 +80,10 @@ func Parse(args []string, out io.Writer) (Options, error) {
 	return opts, nil
 }
 func Run(ctx context.Context, args []string, out io.Writer) error {
+	if len(args) == 1 && (args[0] == "--version" || args[0] == "version") {
+		fmt.Fprintf(out, "CodeVisual %s (%s, %s/%s)\n", Version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
+		return nil
+	}
 	opts, err := Parse(args, out)
 	if err != nil {
 		return err

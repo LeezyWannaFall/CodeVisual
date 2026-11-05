@@ -9,6 +9,7 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"go/version"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -153,7 +154,7 @@ func OfflineEnv(telemetryDir string) []string {
 }
 func (p *Project) Load(ctx context.Context) error {
 	if _, err := exec.LookPath("go"); err != nil {
-		return fmt.Errorf("Go toolchain is required: %w", err)
+		return fmt.Errorf("Go toolchain is required: install Go 1.26 or newer and make the go command available in PATH: %w", err)
 	}
 	patterns := []string{}
 	for _, dir := range p.Directories {
@@ -192,6 +193,27 @@ func (p *Project) Load(ctx context.Context) error {
 		return err
 	}
 	if err = os.WriteFile(filepath.Join(telemetry, "mode"), []byte("off\n"), 0600); err != nil {
+		return err
+	}
+	mf, err := modfile.Parse("go.mod", metadata, nil)
+	if err != nil {
+		return fmt.Errorf("parse go.mod: %w", err)
+	}
+	required := "go1.26.0"
+	if mf.Go != nil && version.Compare("go"+mf.Go.Version, required) > 0 {
+		required = "go" + mf.Go.Version
+	}
+	probe := exec.CommandContext(ctx, "go", "env", "GOVERSION")
+	probe.Dir = scratch
+	probe.Env = OfflineEnv(telemetry)
+	output, err := probe.CombinedOutput()
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if err != nil {
+		return fmt.Errorf("Go toolchain is unavailable: check the go installation in PATH: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	if err = validateToolchain(strings.TrimSpace(string(output)), required); err != nil {
 		return err
 	}
 	flags := []string{"-mod=readonly", "-modfile=" + alternate}
@@ -332,6 +354,17 @@ func (p *Project) Load(ctx context.Context) error {
 	}
 	if len(p.Packages) == 0 {
 		return fmt.Errorf("no packages could be analyzed for the current build configuration")
+	}
+	return nil
+}
+
+func validateToolchain(installed, required string) error {
+	installed = strings.TrimPrefix(installed, "devel ")
+	if !version.IsValid(installed) {
+		return fmt.Errorf("cannot determine Go toolchain version (%q); install %s or newer and check PATH", installed, required)
+	}
+	if version.Compare(installed, required) < 0 {
+		return fmt.Errorf("Go toolchain %s is too old: this analysis requires %s or newer; install it and check PATH (automatic toolchain downloads are disabled)", installed, required)
 	}
 	return nil
 }

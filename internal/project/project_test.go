@@ -105,3 +105,59 @@ func TestToolchainTelemetryIsIsolated(t *testing.T) {
 		t.Fatalf("toolchain telemetry hook changed: %s", b)
 	}
 }
+
+func TestValidateToolchain(t *testing.T) {
+	for _, tt := range []struct{ installed, required, message string }{
+		{"go1.26.0", "go1.26.0", ""},
+		{"go1.27.1", "go1.26.0", ""},
+		{"devel go1.27-abcdef", "go1.26.0", ""},
+		{"go1.25.9", "go1.26.0", "too old"},
+		{"go1.26.0", "go1.27.0", "go1.27.0"},
+		{"unknown", "go1.26.0", "cannot determine"},
+	} {
+		t.Run(tt.installed+"/"+tt.required, func(t *testing.T) {
+			err := validateToolchain(tt.installed, tt.required)
+			if tt.message == "" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.message) {
+				t.Fatalf("error=%v, want %q", err, tt.message)
+			}
+		})
+	}
+}
+
+func TestLoadExplainsMissingToolchain(t *testing.T) {
+	p, err := Discover(context.Background(), "../../testdata/basic", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", t.TempDir())
+	if err = p.Load(context.Background()); err == nil || !strings.Contains(err.Error(), "install Go 1.26") {
+		t.Fatalf("error=%v", err)
+	}
+}
+
+func TestLoadExplainsModuleToolchainRequirement(t *testing.T) {
+	root := t.TempDir()
+	metadata := "module example.test/future\n\ngo 99.0.0\n"
+	write(t, root, "go.mod", metadata)
+	write(t, root, "main.go", "package future\n")
+	p, err := Discover(context.Background(), root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = p.Load(context.Background()); err == nil || !strings.Contains(err.Error(), "requires go99.0.0") {
+		t.Fatalf("error=%v", err)
+	}
+	b, err := os.ReadFile(filepath.Join(root, "go.mod"))
+	if err != nil || string(b) != metadata {
+		t.Fatalf("module metadata changed: %q %v", b, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "go.sum")); !os.IsNotExist(err) {
+		t.Fatalf("unexpected go.sum: %v", err)
+	}
+}
