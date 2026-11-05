@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -127,5 +128,202 @@ func TestTypedProjectAndMountedBuilderVariable(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("variable-based Mount not resolved")
+	}
+}
+
+func TestLocalRouterMountedTwice(t *testing.T) {
+	r := analyzeSource(t, `package app
+import "github.com/go-chi/chi/v5"
+func Routes() chi.Router {
+ r := chi.NewRouter()
+ r.Use(Logging)
+ sub := chi.NewRouter()
+ sub.Use(Auth)
+ sub.Get("/users", H)
+ r.Mount("/api", sub)
+ r.Mount("/v2", sub)
+ return r
+}`)
+	if len(r.Diagnostics) != 0 || len(r.Nodes) != 2 {
+		t.Fatalf("routes=%+v diagnostics=%+v", r.Nodes, r.Diagnostics)
+	}
+	paths := map[string]bool{}
+	for _, n := range r.Nodes {
+		paths[n.Attributes.HTTP.Path] = true
+		if got := strings.Join(n.Attributes.HTTP.Middleware, ","); got != "Logging,Auth" {
+			t.Fatalf("middleware=%s", got)
+		}
+	}
+	if !paths["/api/users"] || !paths["/v2/users"] {
+		t.Fatalf("paths=%v", paths)
+	}
+}
+
+func TestReturnedRouterExtendedWithoutMount(t *testing.T) {
+	for _, declaration := range []string{"r := Base()", "var r = Base()"} {
+		r := analyzeSource(t, strings.Replace(`package app
+import "github.com/go-chi/chi/v5"
+func Routes() chi.Router {
+ DECLARATION
+ r.Get("/extra", H)
+ return r
+}
+func Base() chi.Router {
+ r := chi.NewRouter()
+ r.Use(Auth)
+ r.Get("/base", H)
+ return r
+}`, "DECLARATION", declaration, 1))
+		if len(r.Diagnostics) != 0 || len(r.Nodes) != 2 {
+			t.Fatalf("routes=%+v diagnostics=%+v", r.Nodes, r.Diagnostics)
+		}
+		paths := map[string]bool{}
+		for _, n := range r.Nodes {
+			paths[n.Attributes.HTTP.Path] = true
+			if got := strings.Join(n.Attributes.HTTP.Middleware, ","); got != "Auth" {
+				t.Fatalf("middleware=%s", got)
+			}
+		}
+		if !paths["/base"] || !paths["/extra"] {
+			t.Fatalf("paths=%v", paths)
+		}
+	}
+}
+
+func TestNestedMountsAndBuilderExtensions(t *testing.T) {
+	r := analyzeSource(t, `package app
+import "github.com/go-chi/chi/v5"
+func Routes() chi.Router {
+ r := chi.NewRouter()
+ r.Use(Logging)
+ sub := Base()
+ sub.Get("/extra", H)
+ middle := chi.NewRouter()
+ middle.Use(Auth)
+ middle.Mount("/v1", sub)
+ r.Mount("/api", middle)
+ return r
+}
+func Base() chi.Router { r := chi.NewRouter(); r.Get("/base", H); return r }
+`)
+	if len(r.Nodes) != 2 || len(r.Diagnostics) != 0 {
+		t.Fatalf("routes=%+v diagnostics=%+v", r.Nodes, r.Diagnostics)
+	}
+	for _, n := range r.Nodes {
+		if n.Label != "GET /api/v1/base" && n.Label != "GET /api/v1/extra" {
+			t.Fatalf("wrong path: %s", n.Label)
+		}
+		if got := strings.Join(n.Attributes.HTTP.Middleware, ","); got != "Logging,Auth" {
+			t.Fatalf("middleware=%s", got)
+		}
+	}
+}
+
+func TestUnresolvedBuilderExplainsPartialAnalysis(t *testing.T) {
+	r := analyzeSource(t, `package app
+import "github.com/go-chi/chi/v5"
+func Routes() chi.Router { r := chi.NewRouter(); r.Mount("/api", Dynamic()); return r }
+func Dynamic() chi.Router { if enabled { return chi.NewRouter() }; return unknown }
+`)
+	codes := map[string]bool{}
+	for _, d := range r.Diagnostics {
+		codes[d.Code] = true
+	}
+	if !codes["http_builder_return"] || !codes["http_unresolved_mount"] {
+		t.Fatalf("missing diagnostics: %+v", r.Diagnostics)
+	}
+	if len(r.Nodes) != 0 {
+		t.Fatalf("invented routes: %+v", r.Nodes)
+	}
+}
+
+func TestCyclicMountIsDiagnosed(t *testing.T) {
+	r := analyzeSource(t, `package app
+import "github.com/go-chi/chi/v5"
+func Routes() chi.Router { r := chi.NewRouter(); r.Get("/ok", H); r.Mount("/loop", r); return r }
+`)
+	if len(r.Nodes) != 1 || r.Nodes[0].Label != "GET /ok" || len(r.Diagnostics) != 1 || r.Diagnostics[0].Code != "http_recursive_mount" {
+		t.Fatalf("routes=%+v diagnostics=%+v", r.Nodes, r.Diagnostics)
+	}
+}
+
+func TestTypedReturnedRouterAndLocalMount(t *testing.T) {
+	root := t.TempDir()
+	stub, err := filepath.Abs("../../../testdata/explorers/chistub")
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := "module example.test/app\n\ngo 1.26.0\n\nrequire github.com/go-chi/chi/v5 v5.0.0\nreplace github.com/go-chi/chi/v5 => " + strconv.Quote(filepath.ToSlash(stub)) + "\n"
+	source := `package app
+import (
+ "net/http"
+ "github.com/go-chi/chi/v5"
+)
+func Routes() chi.Router {
+ r := chi.NewRouter()
+ r.Use(Logging)
+ sub := Base()
+ sub.Get("/extra", H)
+ r.Mount("/api", sub)
+ return r
+}
+func Base() chi.Router { r := chi.NewRouter(); r.Use(Auth); r.Get("/base", H); return r }
+func H(http.ResponseWriter, *http.Request) {}
+func Auth(next http.Handler) http.Handler { return next }
+func Logging(next http.Handler) http.Handler { return next }
+`
+	for name, content := range map[string]string{"go.mod": metadata, "routes.go": source} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p, err := project.Discover(context.Background(), root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = p.Load(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Diagnostics) != 0 {
+		t.Fatalf("load diagnostics: %+v", p.Diagnostics)
+	}
+	result, err := (Analyzer{}).Analyze(context.Background(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Nodes) != 2 || len(result.Diagnostics) != 0 {
+		t.Fatalf("routes=%+v diagnostics=%+v", result.Nodes, result.Diagnostics)
+	}
+	for _, n := range result.Nodes {
+		route := n.Attributes.HTTP
+		if route.Path != "/api/base" && route.Path != "/api/extra" {
+			t.Fatalf("wrong path: %s", route.Path)
+		}
+		if route.HandlerID == "" || route.HandlerResolution != "static" || route.HandlerSource == nil {
+			t.Fatalf("handler not resolved: %+v", route)
+		}
+		if got := strings.Join(route.Middleware, ","); got != "Logging,Auth" {
+			t.Fatalf("middleware=%s", got)
+		}
+		if len(route.MiddlewareTargets) != 2 {
+			t.Fatalf("middleware targets=%+v", route.MiddlewareTargets)
+		}
+		for _, target := range route.MiddlewareTargets {
+			if target.NodeID == "" || target.Source == nil {
+				t.Fatalf("middleware target not resolved: %+v", target)
+			}
+		}
+	}
+}
+
+func TestReturnedRouteCallbackKeepsRegistrations(t *testing.T) {
+	r := analyzeSource(t, `package app
+import "github.com/go-chi/chi/v5"
+func Routes() chi.Router {
+ r := chi.NewRouter()
+ return r.Route("/api", func(sub chi.Router) { sub.Get("/users", H) })
+}`)
+	if len(r.Nodes) != 1 || r.Nodes[0].Label != "GET /api/users" {
+		t.Fatalf("routes=%+v diagnostics=%+v", r.Nodes, r.Diagnostics)
 	}
 }

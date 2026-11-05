@@ -27,10 +27,26 @@ type function struct {
 }
 type router struct {
 	identity          string
-	builder           *function
+	group             *routerGroup
 	prefix, scope     string
 	middleware        []string
 	middlewareTargets []graph.TargetRef
+}
+
+// Router instances retain declarations until mounts have been resolved.
+type routerGroup struct {
+	registrations []registration
+	mounts        []mount
+	mounted       bool
+}
+type registration struct {
+	f     *function
+	call  *ast.CallExpr
+	state router
+}
+type mount struct {
+	child *routerGroup
+	state router
 }
 type walker struct {
 	index         *symbols.Index
@@ -42,6 +58,7 @@ type walker struct {
 	files         map[string]bool
 	registrations map[string]bool
 	stack         map[*function]bool
+	groups        []*routerGroup
 	ctx           context.Context
 }
 
@@ -88,6 +105,15 @@ func (a Analyzer) Analyze(ctx context.Context, p *project.Project) (graph.Analys
 		}
 		builders := map[string]*function{}
 		ast.Inspect(f.decl.Body, func(n ast.Node) bool {
+			if spec, ok := n.(*ast.ValueSpec); ok {
+				for _, value := range spec.Values {
+					if call, ok := value.(*ast.CallExpr); ok {
+						if target := w.resolve(f, call.Fun); target != nil && rootFunction(target) {
+							consumed[target] = true
+						}
+					}
+				}
+			}
 			if ret, ok := n.(*ast.ReturnStmt); ok {
 				for _, expr := range ret.Results {
 					if c, ok := expr.(*ast.CallExpr); ok {
@@ -106,6 +132,7 @@ func (a Analyzer) Analyze(ctx context.Context, p *project.Project) (graph.Analys
 						if c, ok := e.(*ast.CallExpr); ok {
 							if target := w.resolve(f, c.Fun); target != nil && rootFunction(target) {
 								builders[id.Name] = target
+								consumed[target] = true
 							}
 						}
 					}
@@ -159,7 +186,12 @@ func (a Analyzer) Analyze(ctx context.Context, p *project.Project) (graph.Analys
 		}
 		w.run(f, router{scope: functionScope(f)}, nil)
 	}
-	return w.result, nil
+	for _, group := range w.groups {
+		if !group.mounted {
+			w.expand(group, router{}, map[*routerGroup]bool{})
+		}
+	}
+	return w.result, ctx.Err()
 }
 func (w *walker) resolve(f *function, e ast.Expr) *function {
 	if target := w.index.Function(f.pkg, e); target != nil {
@@ -224,6 +256,9 @@ func (w *walker) run(f *function, state router, params map[string]router) map[st
 	w.stack[f] = true
 	defer delete(w.stack, f)
 	env := map[string]router{}
+	if state.group == nil && len(routerParameters(f)) > 0 {
+		state.group = w.newGroup()
+	}
 	for _, name := range routerParameters(f) {
 		value := state
 		if value.identity == "" {
@@ -288,14 +323,13 @@ func (w *walker) block(f *function, b *ast.BlockStmt, env map[string]router, sta
 			}
 		case *ast.ReturnStmt:
 			for _, e := range s.Results {
-				if c, ok := e.(*ast.CallExpr); ok {
-					if target := w.resolve(f, c.Fun); target != nil && rootFunction(target) && len(routerParameters(target)) == 0 {
-						w.run(target, state, nil)
-					} else {
-						w.call(f, c, env, state)
-					}
+				if r, ok := w.routerExpr(f, e, env, state); ok {
+					env["$return"] = r
+				} else if call, ok := e.(*ast.CallExpr); ok {
+					w.call(f, call, env, state)
 				}
 			}
+			return
 		case *ast.BlockStmt:
 			w.block(f, s, clone(env), state)
 		case *ast.IfStmt:
@@ -315,7 +349,13 @@ func (w *walker) routerExpr(f *function, e ast.Expr, env map[string]router, stat
 		return router{}, false
 	}
 	if target := w.resolve(f, c.Fun); target != nil && rootFunction(target) {
-		return router{builder: target}, true
+		// Evaluate builders once per call site and preserve their returned instance.
+		result := w.run(target, router{scope: state.scope}, nil)
+		r, ok := result["$return"]
+		if !ok {
+			w.note(f, c, "http_builder_return", "Router builder return could not be resolved statically")
+		}
+		return r, ok
 	}
 	s, ok := c.Fun.(*ast.SelectorExpr)
 	if !ok {
@@ -323,6 +363,7 @@ func (w *walker) routerExpr(f *function, e ast.Expr, env map[string]router, stat
 	}
 	if id, ok := s.X.(*ast.Ident); ok && f.aliases[id.Name] && (s.Sel.Name == "NewRouter" || s.Sel.Name == "NewMux") {
 		state.identity = f.pkg.ImportPath + ":" + strconv.Itoa(int(c.Pos()))
+		state.group = w.newGroup()
 		return state, true
 	}
 	if s.Sel.Name == "With" {
@@ -418,21 +459,71 @@ func (w *walker) call(f *function, c *ast.CallExpr, env map[string]router, state
 			return
 		}
 		r.prefix = join(r.prefix, prefix)
-		if id, ok := c.Args[1].(*ast.Ident); ok {
-			if handler, found := env[id.Name]; found && handler.builder != nil {
-				w.run(handler.builder, r, nil)
+		if child, found := w.routerExpr(f, c.Args[1], env, state); found && child.group != nil && r.group != nil {
+			if containsGroup(child.group, r.group, map[*routerGroup]bool{}) {
+				w.note(f, c, "http_recursive_mount", "Cyclic router mount was omitted")
 				return
 			}
-		}
-		if builder, ok := c.Args[1].(*ast.CallExpr); ok {
-			if target := w.resolve(f, builder.Fun); target != nil {
-				w.run(target, r, nil)
-				return
-			}
+			child.group.mounted = true
+			r.group.mounts = append(r.group.mounts, mount{child.group, r})
+			return
 		}
 		w.note(f, c, "http_unresolved_mount", "Mounted handler could not be resolved statically: "+printed(f, c.Args[1]))
 		return
 	}
+	if r.group != nil {
+		r.group.registrations = append(r.group.registrations, registration{f, c, r})
+	}
+}
+
+func (w *walker) newGroup() *routerGroup {
+	group := &routerGroup{}
+	w.groups = append(w.groups, group)
+	return group
+}
+
+func containsGroup(group, target *routerGroup, seen map[*routerGroup]bool) bool {
+	if group == target {
+		return true
+	}
+	if seen[group] {
+		return false
+	}
+	seen[group] = true
+	for _, item := range group.mounts {
+		if containsGroup(item.child, target, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+func inherited(parent, child router) router {
+	child.prefix = join(parent.prefix, child.prefix)
+	child.middleware = append(append([]string{}, parent.middleware...), child.middleware...)
+	child.middlewareTargets = append(append([]graph.TargetRef{}, parent.middlewareTargets...), child.middlewareTargets...)
+	if parent.scope != "" {
+		child.scope = parent.scope
+	}
+	return child
+}
+
+func (w *walker) expand(group *routerGroup, parent router, stack map[*routerGroup]bool) {
+	if stack[group] || w.ctx.Err() != nil {
+		return
+	}
+	stack[group] = true
+	defer delete(stack, group)
+	for _, item := range group.registrations {
+		w.emit(item.f, item.call, inherited(parent, item.state))
+	}
+	for _, item := range group.mounts {
+		w.expand(item.child, inherited(parent, item.state), stack)
+	}
+}
+
+func (w *walker) emit(f *function, c *ast.CallExpr, r router) {
+	name := c.Fun.(*ast.SelectorExpr).Sel.Name
 	method := ""
 	pathIndex, handlerIndex := 0, 1
 	switch name {
@@ -546,6 +637,9 @@ func join(prefix, path string) string {
 	if prefix == "" {
 		return path
 	}
+	if path == "" {
+		return prefix
+	}
 	if path == "/" {
 		return strings.TrimSuffix(prefix, "/") + "/"
 	}
@@ -613,10 +707,15 @@ func rootFunction(f *function) bool {
 	if len(routerParameters(f)) > 0 {
 		return true
 	}
-	if f.decl.Type.Results != nil && f.pkg.TypesInfo != nil {
+	if f.decl.Type.Results != nil {
 		for _, field := range f.decl.Type.Results.List {
-			if chiRouterType(f.pkg.TypesInfo.TypeOf(field.Type)) {
+			if f.pkg.TypesInfo != nil && chiRouterType(f.pkg.TypesInfo.TypeOf(field.Type)) {
 				return true
+			}
+			if sel, ok := field.Type.(*ast.SelectorExpr); ok {
+				if id, ok := sel.X.(*ast.Ident); ok && f.aliases[id.Name] && sel.Sel.Name == "Router" {
+					return true
+				}
 			}
 		}
 	}
