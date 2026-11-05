@@ -25,9 +25,9 @@ export function SymbolOverview({ view, selected, onSelect, inline = false }: { v
   <div className="symbol-groups">{owners.map(n => { const children = methods.get(n.id) ?? []; return <section className={`symbol-group ${selected?.id === n.id ? 'selected' : ''}`} key={n.id}>
    <button className="symbol-group-title" onClick={() => onSelect(n)}><KindBadge kind={n.kind}/><span><strong>{n.label}</strong><small>{n.kind}{children.length ? ` · ${children.length} methods` : ''}{n.attributes.members?.length ? ` · ${n.attributes.members.length} members` : ''}</small></span></button>
    {n.attributes.documentation && <p className="symbol-doc">{n.attributes.documentation.split('\n')[0]}</p>}
-   {children.length > 0 && <details className="symbol-methods"><summary>Methods <span>{children.length}</span></summary><div>{children.sort((a,b) => a.label.localeCompare(b.label)).map(row)}</div></details>}
+   {children.length > 0 && <details className="symbol-methods" open={children.some(n => n.id === selected?.id)}><summary>Methods <span>{children.length}</span></summary><div>{children.sort((a,b) => a.label.localeCompare(b.label)).map(row)}</div></details>}
 
   </section> })}</div>
-  {standalone.length > 0 && <details className="symbol-standalone" open={owners.length === 0}><summary>Functions & other declarations <span>{standalone.length}</span></summary><div className="symbol-function-list">{standalone.map(row)}</div></details>}
+  {standalone.length > 0 && <details className="symbol-standalone" open={owners.length === 0 || standalone.some(n => n.id === selected?.id)}><summary>Functions & other declarations <span>{standalone.length}</span></summary><div className="symbol-function-list">{standalone.map(row)}</div></details>}
  </div>
 }

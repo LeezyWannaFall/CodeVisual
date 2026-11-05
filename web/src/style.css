@@ -2205,3 +2205,11 @@ html.theme-transition::view-transition-new(root) {
   }
   .symbol-group, .route-entry, .schema-card { animation-delay: 0ms !important; }
 }
+
+.navigation-notice { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 24px 12px; padding: 10px 14px; border: 1px solid var(--border, #333); border-radius: 8px; font-size: 12px; line-height: 1.5; }
+.navigation-notice button { flex-shrink: 0; text-decoration: underline; }
+.empty-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; }
+
+.search-result[aria-current="true"] { background: var(--palette-171717, #171717); box-shadow: inset 3px 0 var(--accent); }
+.pagination { max-width: calc(100% - 24px); flex-wrap: wrap; justify-content: center; white-space: normal; }
+.pagination span { flex-basis: 100%; text-align: center; }

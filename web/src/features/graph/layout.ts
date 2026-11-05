@@ -108,3 +108,5 @@ export function roundedPath(points: ElkPoint[]): string {
  const last = clean[clean.length - 1]
  return `${path} L ${last.x} ${last.y}`
 }
+
+export interface GraphOptions { connectionMode: ConnectionMode; connectionDirection: ConnectionDirection; importDetail: 'simplified' | 'all' }

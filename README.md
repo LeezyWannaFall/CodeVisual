@@ -60,6 +60,23 @@ under multiple prefixes. Mounted paths retain parent and child middleware.
 The Request Flow entry-point picker searches all route pages, including projects
 with more than 200 routes.
 
+Use **Copy link** beside Back to save the current view. The URL retains the
+selected declaration, filters, pages, graph settings, and Request Flow options.
+Reloading or opening the link in another tab restores that view. Links refer to
+this analysis at the same local server address; a changed analysis or missing
+object is explained and opens the project overview.
+
+**Back** and the browser's back/forward buttons restore the previous context.
+Opening handler or middleware source takes you to its package; Back returns to
+the route list with its filters. **Explore package** in the inspector opens the
+owning package. Request Flow starts with the inspector collapsed and opens source
+when you select a call target.
+
+Empty filtered views offer **Clear view filters**. An out-of-range page offers
+**First page**. Search in Explorer covers the whole project, while the filter
+above the map applies to the current view. Paging and selection notices explain
+results hidden by the current page or filters.
+
 Drag the map background to pan and scroll to zoom. **Selected node** focuses on a
 package and its direct neighbors. **Simplified** reduces redundant import lines;
 **All imports** shows every direct import. An arrow `A → B` means **A imports B**.
@@ -124,8 +141,8 @@ npm run test:e2e
 GitHub Actions runs Go tests, vet, and builds on Linux, macOS, and Windows.
 The frontend job uses Node.js 22.16.0, installs dependencies with `npm ci`, runs
 Vitest, checks TypeScript during the build, checks embedded asset freshness,
-and runs the self-contained Playwright scenarios. Optional scenarios requiring
-sibling repositories are skipped by default. A packaging job cross-compiles all
+and runs the self-contained Playwright scenarios, including analysis of this
+checkout. Optional scenarios requiring sibling repositories are skipped by default. A packaging job cross-compiles all
 six supported OS/architecture combinations and checks archive checksums.
 
 To build release archives locally (Python 3 and Go are required):

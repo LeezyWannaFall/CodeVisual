@@ -8,6 +8,7 @@ const pkg: GraphNode = { id: 'pkg', kind: 'package', label: 'demo', parentId: 'r
 const symbol: GraphNode = { id: 'fn', kind: 'function', label: 'Hello', packageId: 'pkg', parentId: 'pkg', attributes: { exported: true, signature: 'func Hello()' }, source: { fileId: 'file', startLine: 2, startColumn: 1, endLine: 2, endColumn: 16 } }
 let requests: string[]
 beforeEach(() => {
+ window.history.replaceState({}, '', '/')
  requests = []
  vi.stubGlobal('fetch', vi.fn(async (input: string) => {
   requests.push(input)
@@ -15,6 +16,7 @@ beforeEach(() => {
   const data = url.pathname.endsWith('/project') ? { schemaVersion: 1, analysisId: 'a', status: 'partial', diagnosticCount: 1, project: { modulePath: 'example.test/demo', rootName: 'demo', buildContext: { goos: 'linux', goarch: 'amd64', tags: [], cgoEnabled: false, configurationKnown: true } }, statistics: { package: 1, function: 1 } }
    : url.pathname.endsWith('/tree') ? [{ id: 'root', kind: 'module', label: 'demo', attributes: { exported: false } }, pkg]
    : url.pathname.endsWith('/diagnostics') ? [{ severity: 'warning', code: 'package_load', message: 'Missing dependency' }]
+   : url.pathname.includes('/nodes/') ? (url.pathname.endsWith('/fn') ? symbol : pkg)
    : url.pathname.includes('/files/') ? { id: 'file', relativePath: 'demo.go', content: 'package demo\nfunc Hello() {}' }
    : url.pathname.endsWith('/search') ? { nodes: [symbol], total: 1 }
    : { analysisId: 'a', nodes: url.searchParams.get('q') === 'absent' ? [] : url.searchParams.get('level') === 'symbols' ? [symbol] : [pkg], edges: [], totalNodes: 1, hiddenNodes: 0 }
@@ -56,7 +58,10 @@ describe('architecture explorer', () => {
   fireEvent.click(screen.getByLabelText('External dependencies'))
   await waitFor(() => expect(requests.some(p => p.includes('includeExternal=true'))).toBe(true))
   fireEvent.change(screen.getByLabelText('Filter graph'), { target: { value: 'absent' } })
-  expect(await screen.findByText('No nodes in this view')).toBeInTheDocument()
+  expect(await screen.findByText('No matches for these filters')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Clear view filters' }))
+  expect(await screen.findByRole('button', { name: 'demo graph node' })).toBeInTheDocument()
+  expect(screen.getByLabelText('Filter graph')).toHaveValue('')
  })
  it('finds symbols outside the current graph through global search', async () => {
   render(<App/>)
@@ -107,4 +112,57 @@ it('shows a later route-page error and retries loading', async () => {
  fail = false
  fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
  expect(await screen.findByRole('button', { name: 'demo graph node' })).toBeInTheDocument()
+})
+
+it('restores a source link, filters, and declaration mode after remounting', async () => {
+ const first = render(<App/> )
+ fireEvent.doubleClick(await screen.findByRole('button', { name: 'demo graph node' }))
+ fireEvent.click(await screen.findByRole('button', { name: /Hello public/ }))
+ fireEvent.click(screen.getByRole('button', { name: 'Declaration graph' }))
+ fireEvent.change(screen.getByLabelText('Symbol kind'), { target: { value: 'function' } })
+ fireEvent.change(screen.getByLabelText('Filter graph'), { target: { value: 'Hello' } })
+ await screen.findByLabelText('Source code')
+ const link = new URL(window.location.href)
+ expect(link.searchParams.get('selectedId')).toBe('fn')
+ expect(link.searchParams.get('packageId')).toBe('pkg')
+ expect(link.searchParams.get('query')).toBe('Hello')
+ first.unmount()
+ render(<App/> )
+ expect(await screen.findByLabelText('Source code')).toHaveTextContent('func Hello() {}')
+ expect(screen.getByLabelText('Filter graph')).toHaveValue('Hello')
+ expect(screen.getByLabelText('Symbol kind')).toHaveValue('function')
+ expect(screen.getByRole('button', { name: 'Declaration graph' })).toHaveAttribute('aria-pressed', 'true')
+})
+
+it('recovers from a link whose object is missing', async () => {
+ const original = globalThis.fetch
+ window.history.replaceState({}, '', '/?analysisId=a&level=symbols&packageId=missing&selectedId=fn')
+ vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
+  if (input.includes('/nodes/missing')) return { ok: false, status: 404, json: async () => ({ error: { code: 'node_not_found', message: 'Node not found' } }) }
+  return original(input, init)
+ }))
+ render(<App/> )
+ expect(await screen.findByText(/The linked object is unavailable/)).toBeInTheDocument()
+ expect(await screen.findByRole('button', { name: 'demo graph node' })).toBeInTheDocument()
+ expect(new URLSearchParams(window.location.search).has('packageId')).toBe(false)
+})
+
+it('does not resolve IDs from a different analysis', async () => {
+ window.history.replaceState({}, '', '/?analysisId=old&level=symbols&packageId=missing&selectedId=old-fn')
+ render(<App/> )
+ expect(await screen.findByText(/This link belongs to a different analysis/)).toBeInTheDocument()
+ await screen.findByRole('button', { name: 'demo graph node' })
+ expect(requests.some(path => path.includes('/nodes/'))).toBe(false)
+ expect(new URLSearchParams(window.location.search).get('analysisId')).toBe('a')
+})
+
+it('copies the current view link', async () => {
+ const writeText = vi.fn().mockResolvedValue(undefined)
+ Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+ render(<App/> )
+ await screen.findByRole('button', { name: 'demo graph node' })
+ fireEvent.click(screen.getByRole('button', { name: 'Copy view link' }))
+ await waitFor(() => expect(writeText).toHaveBeenCalledWith(window.location.href))
+ expect(await screen.findByText(/View link copied/)).toBeInTheDocument()
+ Reflect.deleteProperty(navigator, 'clipboard')
 })

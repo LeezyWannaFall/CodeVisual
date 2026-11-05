@@ -47,6 +47,8 @@ jobs:
         working-directory: web
       - run: npm run test:e2e
         working-directory: web
+        env:
+          CODEVISUAL_TEST_SELF: '1'
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

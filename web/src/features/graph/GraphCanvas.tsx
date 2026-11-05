@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { Background, BackgroundVariant, Controls, Handle, MarkerType, Position, ReactFlow, ReactFlowProvider, useEdgesState, useNodesState, useReactFlow, useStore, type Node, type NodeProps } from '@xyflow/react'
 import type { GraphNode, GraphView } from '../../api/types'
 import { KindBadge } from '../../components/Icon'
-import { layoutGraph, visibleConnections, type ConnectionDirection, type ConnectionMode, type GraphLayout, type Port } from './layout'
+import { layoutGraph, visibleConnections, type ConnectionDirection, type GraphOptions, type GraphLayout, type Port } from './layout'
 import { schemaView, primaryColumn, columnNames } from './schema'
 import { simplifyImports } from './simplify'
 import { RoutedEdge, type RoutedGraphEdge } from './RoutedEdge'
@@ -34,7 +34,7 @@ function Entity({ data }: NodeProps<VisualNode>) {
 const nodeTypes = { entity: Entity }
 const edgeTypes = { routed: RoutedEdge }
 
-function Canvas({ view: originalView, selected, onSelect, onOpen }: Props) {
+function Canvas({ view: originalView, selected, onSelect, onOpen, options, onOptionsChange }: Props) {
  const schemaInteraction = useMemo(() => {
   const indexes = new Map<string, GraphNode[]>()
   for (const edge of originalView.edges.filter(e => e.kind === 'indexes')) {
@@ -54,9 +54,7 @@ function Canvas({ view: originalView, selected, onSelect, onOpen }: Props) {
  const [revision, setRevision] = useState(0)
  const [arranging, setArranging] = useState(true)
  const [error, setError] = useState('')
- const [mode, setMode] = useState<ConnectionMode>('all')
- const [detail, setDetail] = useState<'simplified' | 'all'>('simplified')
- const [direction, setDirection] = useState<ConnectionDirection>('both')
+ const { connectionMode: mode, importDetail: detail, connectionDirection: direction } = options
  const selection = view.nodes.find(n => n.id === selected?.id)
  const incoming = view.edges.filter(e => e.targetId === selection?.id).length
  const outgoing = view.edges.filter(e => e.sourceId === selection?.id).length
@@ -122,12 +120,12 @@ function Canvas({ view: originalView, selected, onSelect, onOpen }: Props) {
     {selection ? <><strong>{selection.label}</strong><span className="incoming-key">{incoming} incoming</span><span className="outgoing-key">{outgoing} outgoing</span><span>{shown.size}/{view.edges.length} connections shown · {layoutView.nodes.length}/{view.nodes.length} nodes</span></> : <span>{imports ? `${overviewEdges.length} of ${view.edges.length} imports shown` : 'Select a node to inspect its connections'}</span>}
    </div>
    <div className="connection-tools">
-    {imports && <select aria-label="Import detail" value={detail} disabled={mode === 'selection' && !!selection} onChange={e => setDetail(e.target.value as 'simplified' | 'all')}><option value="simplified">Simplified</option><option value="all">All imports</option></select>}
+    {imports && <select aria-label="Import detail" value={detail} disabled={mode === 'selection' && !!selection} onChange={e => onOptionsChange({ importDetail: e.target.value as 'simplified' | 'all' })}><option value="simplified">Simplified</option><option value="all">All imports</option></select>}
     <div className="connection-mode" role="group" aria-label="Visible connections">
-     <button aria-pressed={mode === 'all' || !selection} onClick={() => setMode('all')}>All connections</button>
-     <button aria-pressed={mode === 'selection' && !!selection} disabled={!selection} onClick={() => setMode('selection')}>Selected node</button>
+     <button aria-pressed={mode === 'all' || !selection} onClick={() => onOptionsChange({ connectionMode: 'all' })}>All connections</button>
+     <button aria-pressed={mode === 'selection' && !!selection} disabled={!selection} onClick={() => onOptionsChange({ connectionMode: 'selection' })}>Selected node</button>
     </div>
-    {selection && mode === 'selection' && <select aria-label="Connection direction" value={direction} onChange={e => setDirection(e.target.value as ConnectionDirection)}><option value="both">Incoming & outgoing</option><option value="incoming">Incoming only</option><option value="outgoing">Outgoing only</option></select>}
+    {selection && mode === 'selection' && <select aria-label="Connection direction" value={direction} onChange={e => onOptionsChange({ connectionDirection: e.target.value as ConnectionDirection })}><option value="both">Incoming & outgoing</option><option value="incoming">Incoming only</option><option value="outgoing">Outgoing only</option></select>}
    </div>
    {imports && detail === 'simplified' && mode === 'all' && reduced.length < view.edges.length && <p className="simplification-note">{view.edges.length - reduced.length} direct imports hidden where another dependency path exists. Select All imports for the complete graph.</p>}
   </div>
@@ -139,5 +137,5 @@ function Canvas({ view: originalView, selected, onSelect, onOpen }: Props) {
   <Controls showInteractive={false}/>
  </ReactFlow></div></div></SchemaInteraction.Provider>
 }
-interface Props { view: GraphView; selected: GraphNode | null; onSelect: (n: GraphNode) => void; onOpen: (n: GraphNode) => void }
+interface Props { options: GraphOptions; onOptionsChange: (options: Partial<GraphOptions>) => void; view: GraphView; selected: GraphNode | null; onSelect: (n: GraphNode) => void; onOpen: (n: GraphNode) => void }
 export function GraphCanvas(props: Props) { return <ReactFlowProvider><Canvas {...props}/></ReactFlowProvider> }
