@@ -8,9 +8,11 @@ import { schemaView, primaryColumn, columnNames } from './schema'
 import { simplifyImports } from './simplify'
 import { RoutedEdge, type RoutedGraphEdge } from './RoutedEdge'
 
+const ContainerExpansion = createContext<{ expanded: Set<string>; toggle: (id: string, open: boolean) => void }>({ expanded: new Set(), toggle: () => {} })
 const SchemaInteraction = createContext<{ indexes: Map<string, GraphNode[]>; selectedId?: string; onSelect: (node: GraphNode) => void }>({ indexes: new Map(), onSelect: () => {} })
-type VisualNode = Node<{ entity: GraphNode; ports: Port[]; active: boolean; muted: boolean; incoming: number; outgoing: number; imports: boolean }, 'entity'>
+type VisualNode = Node<{ entity: GraphNode; ports: Port[]; active: boolean; muted: boolean; incoming: number; outgoing: number; imports: boolean; completion: boolean }, 'entity'>
 function Entity({ data }: NodeProps<VisualNode>) {
+ const expansion = useContext(ContainerExpansion)
  const schema = useContext(SchemaInteraction)
  const n = data.entity
  const indexes = schema.indexes.get(n.id) ?? []
@@ -18,12 +20,12 @@ function Entity({ data }: NodeProps<VisualNode>) {
  const index = n.attributes.index
  if (n.attributes.container) {
   const c = n.attributes.container
-  return <div className={`entity-node container-map-node nopan ${data.active ? 'active' : ''}`}>
+  return <div className={`entity-node container-map-node nopan ${data.completion ? 'completion-task' : ''} ${data.active ? 'active' : ''}`}>
    {data.ports.map(port => <Handle key={port.id} id={port.id} type={port.side === 'in' ? 'target' : 'source'} position={port.side === 'in' ? Position.Left : Position.Right} style={{ top: port.y }}/>)}
    <div className="container-title"><Icon name="container"/><strong className="node-name">{n.label}</strong><small>{n.kind === 'dockerStage' ? 'BUILD STAGE' : 'SERVICE'}</small></div>
-   <code className="container-image">{c.image || c.dockerfile || 'Declared service'}</code>
-   {c.ports.length > 0 && <div className="container-ports">Ports · {c.ports.join(', ')}</div>}
-   <div className="container-card-contents">{c.contents.slice(0,3).map((item,i) => <div key={i}><span>{item.kind}</span><code>{item.source || 'volume'} → {item.target}</code></div>)}{c.contents.length > 3 && <small>+{c.contents.length-3} declarations · click to inspect</small>}{c.contents.length === 0 && <small>Image filesystem is not inspected</small>}</div>
+   {data.completion && <div className="container-task-badge">✓ Completion task · declared</div>}<div className="container-section-label">BASE IMAGE</div><code className="container-image">{c.image || c.dockerfile || 'Declared service'}</code>
+   {c.ports.length > 0 && <div className="container-ports"><span>PORTS</span>{c.ports.map(port => <code key={port}>{port}</code>)}</div>}
+   <details open={expansion.expanded.has(n.id)} onToggle={event => expansion.toggle(n.id, event.currentTarget.open)} className="container-file-map nodrag nowheel" onClick={event => event.stopPropagation()}><summary onClick={event => { event.preventDefault(); expansion.toggle(n.id, !expansion.expanded.has(n.id)) }}>File transfers <span>{c.contents.length}</span></summary><div className="container-card-contents">{c.contents.map((item,i) => <div className="file-transfer" key={i}><span className="transfer-kind">{item.kind === 'stage' ? 'From build stage' : item.kind === 'bind' ? 'Local mount' : item.kind.toUpperCase()}</span><div className="transfer-route"><code className="transfer-cloud" title={item.source}>{item.source || 'volume'}</code><span className="transfer-arrow" aria-label="to">→</span><code className="transfer-cloud destination" title={item.target}>{item.target}</code></div></div>)}{c.contents.length === 0 && <small>No local files declared</small>}</div></details>
   </div>
  }
  if (table) return <div className={`entity-node er-table table-map-node nopan ${data.active ? 'active' : ''}`}>
@@ -60,6 +62,13 @@ function Canvas({ view: originalView, selected, onSelect, onOpen, options, onOpt
  const height = useStore(s => s.height)
  const [nodes, setNodes, onNodesChange] = useNodesState<VisualNode>([])
  const [edges, setEdges, onEdgesChange] = useEdgesState<RoutedGraphEdge>([])
+ const expansionLayout = useRef(false)
+ const [expanded, setExpanded] = useState<Set<string>>(new Set())
+ const toggleExpanded = (id: string, open: boolean) => setExpanded(previous => {
+  if (previous.has(id) === open) return previous
+  expansionLayout.current = true
+  const next = new Set(previous); if (open) next.add(id); else next.delete(id); return next
+ })
  const [layout, setLayout] = useState<GraphLayout | null>(null)
  const [revision, setRevision] = useState(0)
  const [arranging, setArranging] = useState(true)
@@ -92,16 +101,17 @@ function Canvas({ view: originalView, selected, onSelect, onOpen, options, onOpt
   import('./layoutWorker').then(async ({ createLayoutEngine }) => {
    if (cancelled) return
    engine = createLayoutEngine()
-   const next = await layoutGraph(layoutView, engine)
+   const completionIDs = new Set(view.edges.filter(e => e.label === 'service_completed_successfully').map(e => e.targetId))
+   const next = await layoutGraph(layoutView, engine, expanded, completionIDs)
    if (cancelled) return
    setNodes(next.nodes.map(n => ({
-    id: n.entity.id, type: 'entity', position: { x: n.x, y: n.y }, style: { width: n.width, height: n.height },
-    data: { entity: n.entity, ports: n.ports, active: false, muted: false, incoming: view.edges.filter(e => e.targetId === n.entity.id).length, outgoing: view.edges.filter(e => e.sourceId === n.entity.id).length, imports },
+    id: n.entity.id, type: 'entity', position: { x: n.x, y: n.y }, className: n.entity.attributes.container ? 'container-flow-node' : undefined, style: { width: n.width, height: n.height },
+    data: { entity: n.entity, ports: n.ports, active: false, muted: false, completion: view.edges.some(e => e.targetId === n.entity.id && e.label === "service_completed_successfully"), incoming: view.edges.filter(e => e.targetId === n.entity.id).length, outgoing: view.edges.filter(e => e.sourceId === n.entity.id).length, imports },
    })))
    setLayout(next)
   }).catch(e => { if (!cancelled) setError(e.message ?? 'Could not arrange this graph.') }).finally(() => { stop(); if (!cancelled) setArranging(false) })
   return () => { cancelled = true; stop() }
- }, [layoutView, view, revision, setNodes, imports])
+ }, [layoutView, view, revision, setNodes, imports, expanded])
  useEffect(() => {
   setNodes(ns => ns.map(n => ({ ...n, data: { ...n.data, active: n.id === selection?.id, muted: mode === 'selection' && related.size > 0 && !related.has(n.id) } })))
   if (!layout) return
@@ -121,10 +131,11 @@ function Canvas({ view: originalView, selected, onSelect, onOpen, options, onOpt
  useEffect(() => {
   // Inspector resizing must preserve the user's pan and zoom; fit only a new layout.
   if (!layout || !width || !height || fittedLayout.current === layout) return
+  if (expansionLayout.current) { fittedLayout.current = layout; expansionLayout.current = false; return }
   const frame = requestAnimationFrame(() => { fittedLayout.current = layout; void fitView({ padding: 0.18, duration: 0, maxZoom: 1 }) })
   return () => cancelAnimationFrame(frame)
  }, [layout, fitView, width, height])
- return <SchemaInteraction.Provider value={schemaInteraction}><div className="graph-canvas-shell">
+ return <ContainerExpansion.Provider value={{ expanded, toggle: toggleExpanded }}><SchemaInteraction.Provider value={schemaInteraction}><div className="graph-canvas-shell">
   <div className="graph-canvas-header">
    <div className="connection-summary" aria-live="polite" title={selection ? `${selection.label} · ${incoming} incoming · ${outgoing} outgoing · ${shown.size}/${view.edges.length} connections shown · ${layoutView.nodes.length}/${view.nodes.length} nodes` : undefined}>
     {selection ? <><strong>{selection.label}</strong><span className="incoming-key">{incoming} incoming</span><span className="outgoing-key">{outgoing} outgoing</span><span>{shown.size}/{view.edges.length} connections shown · {layoutView.nodes.length}/{view.nodes.length} nodes</span></> : <span>{imports ? `${overviewEdges.length} of ${view.edges.length} imports shown` : 'Select a node to inspect its connections'}</span>}
@@ -142,10 +153,10 @@ function Canvas({ view: originalView, selected, onSelect, onOpen, options, onOpt
   <div className="graph-canvas-viewport">
  <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onNodeClick={(_, n) => onSelect(n.data.entity)} onNodeDoubleClick={(_, n) => onOpen(n.data.entity)} nodesConnectable={false} nodesDraggable={false} deleteKeyCode={null} colorMode="dark" minZoom={0.08} maxZoom={2} proOptions={{ hideAttribution: true }}>
   <Background variant={BackgroundVariant.Dots} color="var(--graph-dots, #272727)" gap={22} size={1}/>
-  {arranging && <div className="layout-status" role="status">Arranging nodes and routing connections…</div>}
+  {arranging && !layout && <div className="layout-status" role="status">Arranging nodes and routing connections…</div>}
   {error && <div className="layout-status error-note" role="alert">{error}<button onClick={() => setRevision(v => v + 1)}>Retry layout</button></div>}
   <Controls showInteractive={false}/>
- </ReactFlow></div></div></SchemaInteraction.Provider>
+ </ReactFlow></div></div></SchemaInteraction.Provider></ContainerExpansion.Provider>
 }
 interface Props { options: GraphOptions; onOptionsChange: (options: Partial<GraphOptions>) => void; view: GraphView; selected: GraphNode | null; onSelect: (n: GraphNode) => void; onOpen: (n: GraphNode) => void }
 export function GraphCanvas(props: Props) { return <ReactFlowProvider><Canvas {...props}/></ReactFlowProvider> }

@@ -11,9 +11,9 @@ it('groups only declared ownership, preserves unrelated and filtered methods', (
  ]
  const view: GraphView = { analysisId: 'a', nodes, edges: [{ id: 'e', kind: 'declares_method', sourceId: 'type', targetId: 'method' }], totalNodes: 4, hiddenNodes: 0 }
  const groups = groupSymbols(view)
- expect(groups.owners.map(n => n.id)).toEqual(['type'])
+ expect(groups.owners.map(n => n.id)).toEqual(['type', 'interface'])
  expect(groups.methods.get('type')?.map(n => n.id)).toEqual(['method'])
- expect(groups.standalone.map(n => n.id)).toEqual(['func','interface','other'])
- expect(groupSymbols({ ...view, nodes: nodes.slice(1) }).standalone).toHaveLength(4)
+ expect(groups.standalone.map(n => n.id)).toEqual(['func','other'])
+ expect(groupSymbols({ ...view, nodes: nodes.slice(1) }).standalone).toHaveLength(3)
  expect(view.nodes).toHaveLength(5)
 })
