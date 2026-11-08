@@ -1,5 +1,7 @@
 # CodeVisual
 
+**English** · [Русский](README.ru.md)
+
 **Explore Go, Python, and Docker architecture in your browser.**
 
 Detect Go/Python projects automatically, inspect modules and declarations, browse
