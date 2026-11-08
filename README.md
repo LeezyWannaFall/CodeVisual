@@ -6,16 +6,15 @@ Detect Go/Python projects automatically, inspect modules and declarations, brows
 HTTP routes and SQL tables, follow potential calls, and explore Docker/Compose diagrams. Runs locally as a single Go binary — no account,
 cloud service, LLM, or database connection required.
 
-![Package dependency map](pics/image.png)
+![Package dependency map](pics/architecture.png)
 
 ## Quick start
 
 Building from source requires **Go 1.26+**. The built frontend is included;
 Node.js is only needed for development.
 
-Release archives contain a standalone binary for Linux, macOS, or Windows
-(amd64 and arm64), plus this README and the license. Extract the archive for your
-platform and run `codevisual analyze PATH` (`codevisual.exe` on Windows).
+Prebuilt release archives are not published yet. Clone the repository and build
+from source using the commands below.
 Runtime requirements depend on the detected sources:
 
 - **Go:** Go 1.26+ in `PATH`, or the higher version required by the target module.
@@ -26,6 +25,8 @@ Mixed projects use both language analyzers. Node.js is not required to run the b
 Use `codevisual --version` to inspect the binary version.
 
 ```sh
+git clone https://github.com/LeezyWannaFall/CodeVisual.git
+cd CodeVisual
 go build -o bin/codevisual ./cmd/codevisual
 ./bin/codevisual analyze ./path/to/project
 ```
@@ -63,6 +64,11 @@ Click a package to see its declarations below the map. Expand **Methods** or sel
 an item to read its source in the resizable inspector. Double-click a package for
 a dedicated symbol view.
 
+The source inspector offers **Open in VS Code**, using the local VS Code URI
+handler to open the selected declaration's line and column. VS Code must be
+installed on the same computer as the analysis server. Reverse SQL migrations
+named `*.down.sql` or `*_down.sql` are excluded.
+
 Static chi router instances can be extended after a builder returns and mounted
 under multiple prefixes. Mounted paths retain parent and child middleware.
 The Request Flow entry-point picker searches all route pages, including projects
@@ -93,15 +99,19 @@ Search packages and symbols in Explorer, or filter the current view above the ma
 Switch between light and dark themes beside **LOCAL SESSION**.
 
 <details>
-<summary><strong>More screenshots — API & Database</strong></summary>
+<summary><strong>More screenshots — Code, API & Database</strong></summary>
+
+### Package overview and source inspector
+
+![Declarations grouped by type with highlighted source](pics/package-overview.png)
 
 ### HTTP routes
 
-![HTTP route explorer](pics/image2.png)
+![HTTP route explorer](pics/http-routes.png)
 
 ### Database schema
 
-![Database schema map](pics/image3.png)
+![Database schema map](pics/database-schema.png)
 
 </details>
 
@@ -180,13 +190,14 @@ npm run test:e2e
 
 ## Checks and release packaging
 
-GitHub Actions runs Go tests, vet, and builds on Linux, macOS, and Windows,
-with Python 3.12 available for the AST analyzer tests.
+GitHub Actions runs Go tests, vet, and builds on Linux. Native macOS and Windows
+checks are temporarily disabled; their runtime behavior is not verified by CI.
+The Linux job includes Python 3.12 available for the AST analyzer tests.
 The frontend job uses Node.js 22.16.0, installs dependencies with `npm ci`, runs
 Vitest, checks TypeScript during the build, checks embedded asset freshness,
 and runs the self-contained Playwright scenarios, including analysis of this
 checkout. Optional scenarios requiring sibling repositories are skipped by default. A packaging job cross-compiles all
-six supported OS/architecture combinations and checks archive checksums.
+six target OS/architecture combinations (cross-compilation does not verify native execution) and checks archive checksums.
 
 To build release archives locally (Python 3 and Go are required):
 
@@ -211,8 +222,3 @@ in the binary; no runtime CDN is needed.
 ## License
 
 Licensed under the [MIT License](LICENSE). Copyright (c) 2026 LeezyWannaFall.
-
-The source inspector offers **Open in VS Code**, using the local VS Code URI
-handler to open the selected declaration's line and column. VS Code must be
-installed on the same computer as the analysis server. Reverse SQL migrations
-named `*.down.sql` or `*_down.sql` are excluded.
