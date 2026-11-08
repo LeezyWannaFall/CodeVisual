@@ -13,8 +13,14 @@ cloud service, LLM, or database connection required.
 Building from source requires **Go 1.26+**. The built frontend is included;
 Node.js is only needed for development.
 
-Prebuilt release archives are not published yet. Clone the repository and build
-from source using the commands below.
+Download a published version from [GitHub Releases](https://github.com/LeezyWannaFall/CodeVisual/releases).
+Choose the archive for your system and architecture: Windows uses `.zip`,
+Linux and macOS use `.tar.gz`; each has `amd64` and `arm64` variants.
+Extract it and run `./codevisual analyze PATH` (Windows: `.\codevisual.exe analyze PATH`).
+Each archive contains the binary with the embedded frontend, README, and LICENSE;
+`SHA256SUMS` is attached separately. Draft releases appear publicly only after publication.
+
+Alternatively, clone the repository and build from source using the commands below.
 Runtime requirements depend on the detected sources:
 
 - **Go:** Go 1.26+ in `PATH`, or the higher version required by the target module.
@@ -190,14 +196,18 @@ npm run test:e2e
 
 ## Checks and release packaging
 
-GitHub Actions runs Go tests, vet, and builds on Linux. Native macOS and Windows
-checks are temporarily disabled; their runtime behavior is not verified by CI.
-The Linux job includes Python 3.12 available for the AST analyzer tests.
+GitHub Actions runs Go tests, vet, and builds natively on Linux, macOS, and Windows.
+Each native job includes Python 3.12 for the AST analyzer tests.
 The frontend job uses Node.js 22.16.0, installs dependencies with `npm ci`, runs
 Vitest, checks TypeScript during the build, checks embedded asset freshness,
 and runs the self-contained Playwright scenarios, including analysis of this
 checkout. Optional scenarios requiring sibling repositories are skipped by default. A packaging job cross-compiles all
 six target OS/architecture combinations (cross-compilation does not verify native execution) and checks archive checksums.
+
+Changes pushed to `main` update the repository and run CI; they do not change
+an existing release or its archives. Documentation and CI updates alone do not
+require a new release. To distribute a changed binary, publish a new version tag
+(for example, `v0.2.1`) after committing the changes and passing checks.
 
 To build release archives locally (Python 3 and Go are required):
 

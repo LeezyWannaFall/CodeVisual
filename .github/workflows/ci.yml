@@ -13,8 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Native macOS/Windows checks are temporarily disabled.
-        os: [ubuntu-24.04]
+        os: [ubuntu-24.04, macos-14, windows-2022]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v6

@@ -92,7 +92,7 @@ Vite собирает фронтенд в `internal/server/webdist`; Go вклю
 
 ## Автоматизация проверок и выпуска
 
-- `.github/workflows/ci.yml` — Go-проверки на Linux (macOS/Windows временно отключены), фронтенд, e2e и кросс-сборка.
+- `.github/workflows/ci.yml` — нативные Go-проверки на Linux/macOS/Windows, фронтенд, e2e и кросс-сборка.
 - `.github/workflows/release.yml` — проверки, архивы и черновик релиза по тегу.
 - `scripts/check_webdist.py` — проверка отличий встроенной сборки от коммита,
   включая новые файлы, которые ещё не отслеживаются Git.
