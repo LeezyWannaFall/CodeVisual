@@ -9,3 +9,12 @@ it('consumes the shared Go JSON contract', () => {
  expect(view.edges).toEqual([])
  expect(view.totalNodes - view.nodes.length).toBe(view.hiddenNodes)
 })
+
+import mixedFixture from '../../../testdata/contracts/mixed.json'
+it('consumes Python and container DTOs from the shared contract', () => {
+ const view = mixedFixture as GraphView
+ expect(view.nodes[0].attributes.language).toBe('python')
+ expect(view.nodes[1].kind).toBe('class')
+ expect(view.nodes[2].attributes.container?.contents[0].packageIds).toEqual(['python_module'])
+ expect(view.nodes[2].attributes.container?.environmentKeys).toEqual(['MODE'])
+})

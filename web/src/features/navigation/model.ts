@@ -52,6 +52,7 @@ export function navigationReducer(state: NavigationState, action: NavigationActi
   case 'navigate': {
    const node = action.node
    const next = { ...navigationReducer(state, { type: 'clearFilters' }), selectedId: node.id, inspectorCollapsed: false, inspectedPackageId: '', panelOffset: 0, packageId: '', groupId: '' }
+   if (['container','dockerStage','containerNetwork','containerVolume'].includes(node.kind)) return { ...next, level: 'containers' }
    if (node.kind === 'httpRoute') return { ...next, level: 'http' }
    if (node.kind === 'table' || node.kind === 'index') return { ...next, level: 'database' }
    if (node.kind === 'package') return { ...next, level: 'symbols', packageId: node.id, symbolView: 'overview' }
@@ -60,12 +61,12 @@ export function navigationReducer(state: NavigationState, action: NavigationActi
    // External/dynamic boundaries have no package view. Keep their current graph.
    return { ...state, selectedId: node.id, inspectorCollapsed: false }
   }
-  case 'overview': return { ...navigationReducer(state, { type: 'clearFilters' }), level: action.level, groupId: '', packageId: '', selectedId: '', inspectedPackageId: '', panelOffset: 0 }
+  case 'overview': return { ...navigationReducer(state, { type: 'clearFilters' }), level: action.level, inspectorCollapsed: action.level === 'containers' ? true : state.inspectorCollapsed, groupId: '', packageId: '', selectedId: '', inspectedPackageId: '', panelOffset: 0 }
   case 'flow': return { ...navigationReducer(state, { type: 'overview', level: 'flow' }), flowRootId: action.rootId, external: false, inspectorCollapsed: true }
  }
 }
 
-const levels: Level[] = ['packages', 'directories', 'symbols', 'http', 'database', 'flow']
+const levels: Level[] = ['packages', 'directories', 'symbols', 'http', 'database', 'flow', 'containers']
 function integer(value: string | null, fallback: number, min = 0, max = 1_000_000_000): number {
  if (value === null || !/^\d+$/.test(value)) return fallback
  const number = Number(value)

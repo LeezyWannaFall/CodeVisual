@@ -81,6 +81,7 @@ export function useNavigation(project: ProjectInfo | null, tree: GraphNode[], ro
    setCache({})
    setNotice('This link belongs to a different analysis. Showing the project overview.')
   } else next = { ...previous, analysisId: project.analysisId }
+  if (!(project.statistics.package ?? 0) && ((project.statistics.container ?? 0) > 0 || project.project.languages?.length === 0) && !explicitView.current) { next.level = 'containers'; next.inspectorCollapsed = true }
   if ((project.statistics.package ?? 0) > 200 && !explicitView.current && next.level === 'packages') next.level = 'directories'
   commit({ type: 'restore', state: next }, 'replace')
  }, [project, commit])

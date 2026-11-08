@@ -2112,6 +2112,15 @@ button, .view-switch, .connection-mode { transition: background-color .18s, colo
 :root[data-theme="light"] .react-flow__controls button { background: #fff; color: #25354a; border-color: #cbd5e1; }
 :root[data-theme="light"] .react-flow__controls button svg { fill: currentColor; }
 
+/* Transition snapshots must not intercept interaction with the live page. */
+html.theme-transition::view-transition,
+html.theme-transition::view-transition-group(root),
+html.theme-transition::view-transition-image-pair(root),
+html.theme-transition::view-transition-old(root),
+html.theme-transition::view-transition-new(root) {
+  pointer-events: none;
+}
+
 /* Reveal the new theme above a frozen snapshot of the previous theme. */
 html.theme-transition::view-transition-old(root),
 html.theme-transition::view-transition-new(root) {
@@ -2121,7 +2130,7 @@ html.theme-transition::view-transition-new(root) {
 html.theme-transition::view-transition-old(root) { z-index: 1; }
 html.theme-transition::view-transition-new(root) {
   z-index: 2;
-  animation: theme-reveal 700ms cubic-bezier(.22, 1, .36, 1) both;
+  animation: theme-reveal 2000ms cubic-bezier(.22, 1, .36, 1) both;
 }
 @keyframes theme-reveal {
   from { clip-path: circle(0 at var(--theme-reveal-x) var(--theme-reveal-y)); }
@@ -2213,3 +2222,19 @@ html.theme-transition::view-transition-new(root) {
 .search-result[aria-current="true"] { background: var(--palette-171717, #171717); box-shadow: inset 3px 0 var(--accent); }
 .pagination { max-width: calc(100% - 24px); flex-wrap: wrap; justify-content: center; white-space: normal; }
 .pagination span { flex-basis: 100%; text-align: center; }
+
+.container-map-node { padding: 16px; overflow: hidden; }
+.container-title { display: flex; align-items: center; gap: 7px; }
+.container-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.container-title small { margin-left: auto; font-size: 8px; color: var(--palette-919191, #919191); }
+.container-image { display: block; margin: 12px 0; font-size: 11px; overflow-wrap: anywhere; }
+.container-ports { font-size: 10px; color: var(--accent-light); margin-bottom: 8px; }
+.container-card-contents { font-size: 10px; border-top: 1px solid var(--border); padding-top: 8px; }
+.container-card-contents div { display: flex; gap: 7px; margin-bottom: 5px; }
+.container-card-contents code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.container-detail h3 { margin-top: 18px; }
+.container-detail dt { color: var(--palette-919191, #919191); font-size: 10px; margin-top: 10px; }
+.container-detail dd { margin: 4px 0; overflow-wrap: anywhere; }
+.container-contents { list-style: none; padding: 0; }
+.container-contents li { display: flex; flex-direction: column; gap: 7px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.container-contents code { overflow-wrap: anywhere; }

@@ -48,6 +48,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS users_name ON public.users USING btree (name);
 -- +goose Down
 DROP TABLE public.users;
 CREATE TABLE must_not_appear(id int);`,
+		"migrations/004_down.sql": "ALTER TABLE public.users DROP COLUMN name;",
 		"migrations/002.down.sql": "CREATE TABLE also_not_visible(id int);",
 		"migrations/003.sql": `/* nested /* CREATE TABLE fake(x int); */ comment */
 DO $$ BEGIN PERFORM 'CREATE TABLE fake(x int);'; END $$;

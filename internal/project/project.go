@@ -32,6 +32,11 @@ type Package struct {
 	TypesInfo  *types.Info
 }
 type Project struct {
+	HasGoModule  bool
+	GoModuleDirs []string
+	PythonFiles  []string
+	ComposeFiles []string
+	Dockerfiles  []string
 	graph.Project
 	Directories  []string
 	Packages     []Package

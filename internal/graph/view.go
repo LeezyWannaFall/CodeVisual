@@ -17,7 +17,7 @@ func (s *Snapshot) View(o ViewOptions) (View, error) {
 	if o.Offset < 0 {
 		return View{}, fmt.Errorf("offset must be non-negative")
 	}
-	if o.Level != "packages" && o.Level != "directories" && o.Level != "symbols" && o.Level != "http" && o.Level != "database" {
+	if o.Level != "packages" && o.Level != "directories" && o.Level != "symbols" && o.Level != "http" && o.Level != "database" && o.Level != "containers" {
 		return View{}, fmt.Errorf("unknown graph level")
 	}
 	if o.Level == "symbols" {
@@ -42,9 +42,11 @@ func (s *Snapshot) View(o ViewOptions) (View, error) {
 				match = match && s.descends(n.ID, o.GroupID)
 			}
 		case "symbols":
-			match = n.PackageID == o.PackageID && n.Kind != "package" && n.Kind != "httpRoute"
+			match = n.PackageID == o.PackageID && n.Kind != "package" && n.Kind != "httpRoute" && n.Kind != "dynamicCall" && n.Kind != "externalCall"
 		case "http":
 			match = n.Kind == "httpRoute"
+		case "containers":
+			match = n.Kind == "container" || n.Kind == "dockerStage" || n.Kind == "containerNetwork" || n.Kind == "containerVolume"
 		case "database":
 			match = n.Kind == "table" || n.Kind == "index"
 		case "directories":

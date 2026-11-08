@@ -3,7 +3,7 @@
 ## Поток данных
 
 ```text
-CLI → Discover / Load → индекс символов → анализаторы
+CLI → Open (языки и конфигурация) / Load (Go-модули) → индекс символов → анализаторы
     → Merge → Snapshot → локальный HTTP API → React-интерфейс
 ```
 
@@ -19,6 +19,8 @@ CLI → Discover / Load → индекс символов → анализато
 | `internal/cli` | Аргументы, запуск анализа, сервер, браузер и остановка |
 | `internal/project` | Обнаружение модуля, build context, offline-загрузка и чтение файлов |
 | `internal/analyzer/symbols` | Общий индекс символов и разрешение целей |
+| `internal/analyzer/python` | Изолированный Python AST: модули, импорты, классы, функции и вызовы |
+| `internal/analyzer/containers` | Dockerfile/Compose, стадии, ресурсы, содержимое и связи с кодом |
 | `internal/analyzer/golang` | Пакеты, импорты и объявления Go |
 | `internal/analyzer/httproutes` | Статические регистрации chi, middleware и маршруты |
 | `internal/analyzer/sqlschema` | Инвентаризация SQL DDL без исполнения миграций |
@@ -41,7 +43,7 @@ CLI → Discover / Load → индекс символов → анализато
 
 API расположен под `/api/v1`: project, tree, graph, search, nodes, files,
 diagnostics. `Snapshot.View` строит представления пакетов, каталогов, символов,
-HTTP и БД; `Snapshot.Flow` обходит связи вызовов. Представления ограничены
+HTTP, БД и контейнеров; `Snapshot.Flow` обходит связи вызовов. Представления ограничены
 `graph.MaxViewNodes` (сейчас 200). Не путай страницу представления с полным набором
 результатов анализа.
 
@@ -97,4 +99,29 @@ Vite собирает фронтенд в `internal/server/webdist`; Go вклю
 - `scripts/release.py` — шесть архивов и SHA256SUMS, без сторонних Python-библиотек.
 
 `internal/cli.Version` задаётся при сборке релиза. `--version` работает без
-установленного Go; перед анализом проверяется доступная в PATH версия Go.
+установленного Go; перед анализом Go-исходников проверяется доступная в PATH версия Go.
+
+## Языки и инфраструктура
+
+`project.Open` определяет Go/Python и собирает пути конфигурации. Для Python-only
+и Docker-only `go.mod` не требуется. В workspace без корневого go.mod отдельные
+дочерние Go-модули загружаются независимо; `graph.Rebase` переносит диапазоны
+исходников, файлы и каталоги в систему путей общего корня. `Discover` остаётся
+доступным для тестов и загрузки одного Go-модуля.
+
+Go- и Python-анализаторы используют общие kinds package/function/method;
+Python-классы имеют kind class, а объявления получают attributes.language.
+Префикс Python в ключах ID предотвращает коллизии с Go. Project.languages
+возвращает список определённых языков (пустой у Docker-only).
+
+Python helper встроен через go:embed и получает исходники в stdin. Запускается
+через `python -I -S -c`, использует только стандартную библиотеку; ast.parse
+не импортирует исследуемый код. Хеши относятся к исходным байтам файлов.
+
+Container DTO содержит только декларации. level=containers возвращает
+container/dockerStage/containerNetwork/containerVolume; Contents описывает
+COPY/ADD или mount и ссылается на packageIds. Source API и навигация работают
+с Go, Python, Dockerfile и Compose. Копии учитывают .dockerignore через
+moby/patternmatcher; YAML разбирается yaml.v3. Файлы Compose независимы.
+Graph.Merge объединяет общие узлы каталогов и связи, диагностируя конфликты;
+Snapshot проверяет в том числе ссылки содержимого контейнеров на пакеты.

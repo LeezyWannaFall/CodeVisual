@@ -2,7 +2,7 @@ import { SQLCode } from '../../components/SQLCode'
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Background, BackgroundVariant, Controls, Handle, MarkerType, Position, ReactFlow, ReactFlowProvider, useEdgesState, useNodesState, useReactFlow, useStore, type Node, type NodeProps } from '@xyflow/react'
 import type { GraphNode, GraphView } from '../../api/types'
-import { KindBadge } from '../../components/Icon'
+import { Icon, KindBadge } from '../../components/Icon'
 import { layoutGraph, visibleConnections, type ConnectionDirection, type GraphOptions, type GraphLayout, type Port } from './layout'
 import { schemaView, primaryColumn, columnNames } from './schema'
 import { simplifyImports } from './simplify'
@@ -16,6 +16,16 @@ function Entity({ data }: NodeProps<VisualNode>) {
  const indexes = schema.indexes.get(n.id) ?? []
  const table = n.attributes.table
  const index = n.attributes.index
+ if (n.attributes.container) {
+  const c = n.attributes.container
+  return <div className={`entity-node container-map-node nopan ${data.active ? 'active' : ''}`}>
+   {data.ports.map(port => <Handle key={port.id} id={port.id} type={port.side === 'in' ? 'target' : 'source'} position={port.side === 'in' ? Position.Left : Position.Right} style={{ top: port.y }}/>)}
+   <div className="container-title"><Icon name="container"/><strong className="node-name">{n.label}</strong><small>{n.kind === 'dockerStage' ? 'BUILD STAGE' : 'SERVICE'}</small></div>
+   <code className="container-image">{c.image || c.dockerfile || 'Declared service'}</code>
+   {c.ports.length > 0 && <div className="container-ports">Ports · {c.ports.join(', ')}</div>}
+   <div className="container-card-contents">{c.contents.slice(0,3).map((item,i) => <div key={i}><span>{item.kind}</span><code>{item.source || 'volume'} → {item.target}</code></div>)}{c.contents.length > 3 && <small>+{c.contents.length-3} declarations · click to inspect</small>}{c.contents.length === 0 && <small>Image filesystem is not inspected</small>}</div>
+  </div>
+ }
  if (table) return <div className={`entity-node er-table table-map-node nopan ${data.active ? 'active' : ''}`}>
   {data.ports.map(port => <Handle key={port.id} id={port.id} type={port.side === 'in' ? 'target' : 'source'} position={port.side === 'in' ? Position.Left : Position.Right} style={{ top: port.y }} />)}
   <div className="er-table-title"><span className="node-name">{n.label}</span><span title="SQL table">▤</span></div>

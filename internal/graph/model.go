@@ -19,6 +19,7 @@ type BuildContext struct {
 	ConfigurationKnown bool     `json:"configurationKnown"`
 }
 type Project struct {
+	Languages    []string     `json:"languages"`
 	Root         string       `json:"-"`
 	ModulePath   string       `json:"modulePath"`
 	RootName     string       `json:"rootName"`
@@ -32,6 +33,8 @@ type SourceRange struct {
 	EndColumn   int    `json:"endColumn"`
 }
 type Attributes struct {
+	Language      string     `json:"language,omitempty"`
+	Container     *Container `json:"container,omitempty"`
 	Resolution    string     `json:"resolution,omitempty"`
 	External      bool       `json:"external,omitempty"`
 	Possible      bool       `json:"possible,omitempty"`
@@ -107,6 +110,9 @@ func Link(kind, from, to string, evidence *SourceRange) Edge {
 	return Edge{ID: ID("edge", kind+":"+from+":"+to), Kind: kind, SourceID: from, TargetID: to, Evidence: evidence}
 }
 func NewSnapshot(p Project, r AnalysisResult) (*Snapshot, error) {
+	if p.Languages == nil {
+		p.Languages = []string{}
+	}
 	s := &Snapshot{SchemaVersion: 1, Status: "complete", Project: p, Nodes: r.Nodes, Edges: r.Edges, Diagnostics: r.Diagnostics, Files: r.Files, nodes: map[string]Node{}, files: map[string]File{}}
 	if s.Nodes == nil {
 		s.Nodes = []Node{}
@@ -166,6 +172,18 @@ func NewSnapshot(p Project, r AnalysisResult) (*Snapshot, error) {
 		a, b := s.Diagnostics[i], s.Diagnostics[j]
 		return a.Code+a.NodeID+a.Message < b.Code+b.NodeID+b.Message
 	})
+	for _, n := range s.Nodes {
+		if n.Attributes.Container != nil {
+			for _, content := range n.Attributes.Container.Contents {
+				for _, id := range content.PackageIDs {
+					target, ok := s.nodes[id]
+					if !ok || target.Kind != "package" {
+						return nil, fmt.Errorf("invalid container source package %s", id)
+					}
+				}
+			}
+		}
+	}
 	for _, d := range s.Diagnostics {
 		if d.Severity == "error" || d.Severity == "warning" {
 			s.Status = "partial"

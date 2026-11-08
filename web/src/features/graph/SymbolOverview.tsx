@@ -4,7 +4,7 @@ import { KindBadge } from '../../components/Icon'
 
 // Ownership comes only from declaration edges. Names do not imply dependencies.
 export function groupSymbols(view: GraphView) {
- const owners = view.nodes.filter(n => ['struct', 'type'].includes(n.kind))
+ const owners = view.nodes.filter(n => ['struct', 'type', 'class'].includes(n.kind))
  const methods = new Map<string, GraphNode[]>()
  const owned = new Set<string>()
  const byID = new Map(view.nodes.map(n => [n.id, n]))

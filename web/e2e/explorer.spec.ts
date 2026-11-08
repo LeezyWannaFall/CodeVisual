@@ -262,7 +262,7 @@ test('project sections form a vertical menu above Explorer on desktop and narrow
  await page.goto('/')
  const nav = page.getByRole('navigation',{name:'Project sections'})
  const boxes = await nav.getByRole('button').evaluateAll(buttons => buttons.map(button => { const r=button.getBoundingClientRect(); return {x:r.x,y:r.y,bottom:r.bottom} }))
- expect(boxes).toHaveLength(4)
+ expect(boxes).toHaveLength(5)
  expect(new Set(boxes.map(b=>b.x)).size).toBe(1)
  for(let i=1;i<boxes.length;i++) expect(boxes[i].y).toBeGreaterThanOrEqual(boxes[i-1].bottom)
  const menu=(await nav.boundingBox())!, explorer=(await page.locator('.explorer').boundingBox())!

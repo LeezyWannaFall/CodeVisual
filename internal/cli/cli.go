@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"strconv"
@@ -18,8 +19,10 @@ import (
 
 	"codevisual/internal/analyzer"
 	"codevisual/internal/analyzer/callgraph"
+	"codevisual/internal/analyzer/containers"
 	goanalyzer "codevisual/internal/analyzer/golang"
 	"codevisual/internal/analyzer/httproutes"
+	"codevisual/internal/analyzer/python"
 	"codevisual/internal/analyzer/sqlschema"
 	"codevisual/internal/analyzer/symbols"
 	"codevisual/internal/graph"
@@ -96,28 +99,28 @@ func Run(ctx context.Context, args []string, out io.Writer) error {
 	defer listener.Close()
 	start := time.Now()
 	fmt.Fprintf(out, "Analyzing %s (offline)…\n", opts.Path)
-	p, err := project.Discover(ctx, opts.Path, opts.Tags)
+	p, err := project.Open(ctx, opts.Path, opts.Tags)
 	if err != nil {
 		return err
 	}
-	if err = p.Load(ctx); err != nil {
+	languages := []string{}
+	for _, language := range p.Languages {
+		if language == "go" {
+			languages = append(languages, "Go")
+		} else {
+			languages = append(languages, "Python")
+		}
+	}
+	if len(languages) > 0 {
+		fmt.Fprintf(out, "Detected languages: %s\n", strings.Join(languages, ", "))
+	}
+	if len(p.ComposeFiles)+len(p.Dockerfiles) > 0 {
+		fmt.Fprintf(out, "Detected %d Docker/Compose configuration files\n", len(p.ComposeFiles)+len(p.Dockerfiles))
+	}
+	result, err := Analyze(ctx, p)
+	if err != nil {
 		return err
 	}
-	index := symbols.New(p)
-	results := []graph.AnalysisResult{}
-	var routes graph.AnalysisResult
-	for _, worker := range []analyzer.Analyzer{goanalyzer.Analyzer{}, httproutes.Analyzer{Index: index}, sqlschema.Analyzer{}, callgraph.Analyzer{Index: index}} {
-		result, err := worker.Analyze(ctx, p)
-		if err != nil {
-			return err
-		}
-		if _, ok := worker.(httproutes.Analyzer); ok {
-			routes = result
-		}
-		results = append(results, result)
-	}
-	results = append(results, callgraph.ConnectRoutes(routes, index))
-	result := graph.Merge(results...)
 	snapshot, err := graph.NewSnapshot(p.Project, result)
 	if err != nil {
 		return err
@@ -171,4 +174,83 @@ func openBrowser(url string) error {
 	}
 	go func() { _ = cmd.Wait() }()
 	return nil
+}
+
+// Analyze builds one language-independent snapshot payload from detected sources.
+func Analyze(ctx context.Context, p *project.Project) (graph.AnalysisResult, error) {
+	results := []graph.AnalysisResult{}
+	results = append(results, graph.AnalysisResult{Nodes: []graph.Node{{ID: graph.ID("module", p.ModulePath), Kind: "module", Label: p.ModulePath}}})
+	if p.HasGoModule {
+		result, err := analyzeGo(ctx, p)
+		if err != nil {
+			return graph.AnalysisResult{}, err
+		}
+		results = append(results, result)
+	} else {
+		results = append(results, graph.AnalysisResult{Diagnostics: p.Diagnostics})
+		seen := map[string]bool{}
+		for _, dir := range p.GoModuleDirs {
+			child, err := project.Open(ctx, filepath.Join(p.Root, filepath.FromSlash(dir)), p.BuildContext.Tags)
+			if err != nil {
+				if ctx.Err() != nil {
+					return graph.AnalysisResult{}, ctx.Err()
+				}
+				results = append(results, graph.AnalysisResult{Diagnostics: []graph.Diagnostic{{Severity: "warning", Code: "go_module_unavailable", Message: dir + ": " + err.Error()}}})
+				continue
+			}
+			if seen[child.ModulePath] {
+				results = append(results, graph.AnalysisResult{Diagnostics: []graph.Diagnostic{{Severity: "warning", Code: "duplicate_go_module", Message: "Skipped duplicate module path: " + child.ModulePath}}})
+				continue
+			}
+			seen[child.ModulePath] = true
+			result, err := analyzeGo(ctx, child)
+			if err != nil {
+				return graph.AnalysisResult{}, err
+			}
+			results = append(results, graph.Rebase(result, dir, graph.ID("module", p.ModulePath)))
+		}
+	}
+
+	for _, worker := range []analyzer.Analyzer{python.Analyzer{}, sqlschema.Analyzer{}} {
+		result, err := worker.Analyze(ctx, p)
+		if err != nil {
+			return graph.AnalysisResult{}, err
+		}
+		results = append(results, result)
+	}
+	result := graph.Merge(results...)
+	for i := range result.Nodes {
+		n := &result.Nodes[i]
+		if n.Attributes.Language == "" && (n.PackageID != "" || n.Kind == "package" || n.Kind == "externalPackage") {
+			n.Attributes.Language = "go"
+		}
+	}
+	infrastructure, err := (containers.Analyzer{Code: result}).Analyze(ctx, p)
+	if err != nil {
+		return graph.AnalysisResult{}, err
+	}
+	return graph.Merge(result, infrastructure), nil
+}
+
+func analyzeGo(ctx context.Context, p *project.Project) (graph.AnalysisResult, error) {
+	results := []graph.AnalysisResult{}
+	if len(p.Directories) > 0 {
+		if err := p.Load(ctx); err != nil {
+			return graph.AnalysisResult{}, err
+		}
+		index := symbols.New(p)
+		var routes graph.AnalysisResult
+		for _, worker := range []analyzer.Analyzer{goanalyzer.Analyzer{}, httproutes.Analyzer{Index: index}, callgraph.Analyzer{Index: index}} {
+			result, err := worker.Analyze(ctx, p)
+			if err != nil {
+				return graph.AnalysisResult{}, err
+			}
+			if _, ok := worker.(httproutes.Analyzer); ok {
+				routes = result
+			}
+			results = append(results, result)
+		}
+		results = append(results, callgraph.ConnectRoutes(routes, index))
+	}
+	return graph.Merge(results...), nil
 }

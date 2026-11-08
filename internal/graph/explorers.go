@@ -1,5 +1,7 @@
 package graph
 
+import "reflect"
+
 // HTTPRoute records a source registration, not an observed runtime endpoint.
 type TargetRef struct {
 	Source     *SourceRange `json:"source,omitempty"`
@@ -51,9 +53,25 @@ type SQLIndex struct {
 func Merge(results ...AnalysisResult) AnalysisResult {
 	out := AnalysisResult{Nodes: []Node{}, Edges: []Edge{}, Files: []File{}, Diagnostics: []Diagnostic{}}
 	files := map[string]File{}
+	nodes := map[string]Node{}
+	edges := map[string]Edge{}
 	for _, r := range results {
-		out.Nodes = append(out.Nodes, r.Nodes...)
-		out.Edges = append(out.Edges, r.Edges...)
+		for _, n := range r.Nodes {
+			if old, ok := nodes[n.ID]; ok {
+				if !reflect.DeepEqual(old, n) {
+					out.Diagnostics = append(out.Diagnostics, Diagnostic{Severity: "warning", Code: "node_conflict", Message: "Conflicting analyzer declarations: " + n.ID})
+				}
+				continue
+			}
+			nodes[n.ID] = n
+			out.Nodes = append(out.Nodes, n)
+		}
+		for _, e := range r.Edges {
+			if _, ok := edges[e.ID]; !ok {
+				edges[e.ID] = e
+				out.Edges = append(out.Edges, e)
+			}
+		}
 		out.Diagnostics = append(out.Diagnostics, r.Diagnostics...)
 		for _, f := range r.Files {
 			if previous, ok := files[f.ID]; ok {
@@ -67,4 +85,28 @@ func Merge(results ...AnalysisResult) AnalysisResult {
 		}
 	}
 	return out
+}
+
+// Container describes declarations, not a running container or an inspected image.
+type Container struct {
+	Type            string             `json:"type"`
+	Image           string             `json:"image,omitempty"`
+	BuildContext    string             `json:"buildContext,omitempty"`
+	Dockerfile      string             `json:"dockerfile,omitempty"`
+	Stage           string             `json:"stage,omitempty"`
+	Workdir         string             `json:"workdir,omitempty"`
+	Command         string             `json:"command,omitempty"`
+	Entrypoint      string             `json:"entrypoint,omitempty"`
+	Ports           []string           `json:"ports"`
+	Volumes         []string           `json:"volumes"`
+	Networks        []string           `json:"networks"`
+	EnvironmentKeys []string           `json:"environmentKeys"`
+	Contents        []ContainerContent `json:"contents"`
+}
+type ContainerContent struct {
+	Kind       string   `json:"kind"`
+	Source     string   `json:"source"`
+	Target     string   `json:"target"`
+	From       string   `json:"from,omitempty"`
+	PackageIDs []string `json:"packageIds"`
 }

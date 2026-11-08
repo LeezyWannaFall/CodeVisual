@@ -191,7 +191,7 @@ func (Analyzer) Analyze(ctx context.Context, p *project.Project) (graph.Analysis
 		if d.IsDir() {
 			if path != p.Root {
 				name := d.Name()
-				if strings.HasPrefix(name, ".") || name == "vendor" || name == "node_modules" || name == "testdata" {
+				if project.SkipDirectory(name) {
 					return filepath.SkipDir
 				}
 				if _, e := os.Stat(filepath.Join(path, "go.mod")); e == nil {
@@ -201,7 +201,7 @@ func (Analyzer) Analyze(ctx context.Context, p *project.Project) (graph.Analysis
 			return nil
 		}
 		name := strings.ToLower(d.Name())
-		if d.Type()&os.ModeSymlink == 0 && strings.HasSuffix(name, ".sql") && !strings.HasSuffix(name, ".down.sql") {
+		if d.Type()&os.ModeSymlink == 0 && strings.HasSuffix(name, ".sql") && !strings.HasSuffix(name, ".down.sql") && !strings.HasSuffix(name, "_down.sql") {
 			rel, _ := filepath.Rel(p.Root, path)
 			paths = append(paths, filepath.ToSlash(rel))
 		}

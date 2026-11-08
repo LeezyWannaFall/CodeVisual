@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -145,19 +147,54 @@ func (a *api) graph(w http.ResponseWriter, r *http.Request) {
 func (a *api) search(w http.ResponseWriter, r *http.Request) {
 	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
 	out := []graph.Node{}
+	type hit struct {
+		node graph.Node
+		rank int
+		key  string
+	}
+	hits := []hit{}
+	less := func(a, b hit) bool {
+		if a.rank != b.rank {
+			return a.rank < b.rank
+		}
+		return a.key < b.key
+	}
 	total := 0
 	if q != "" {
 		for _, n := range a.snapshot.Nodes {
 			if n.Kind == "module" || n.Kind == "directory" || n.Kind == "externalPackage" {
 				continue
 			}
-			if strings.Contains(strings.ToLower(n.Label+" "+n.Attributes.ImportPath), q) {
+			qualified := n.Label
+			if n.Attributes.Receiver != "" {
+				qualified = strings.Trim(n.Attributes.Receiver, "*()") + "." + n.Label
+			}
+			if strings.Contains(strings.ToLower(n.Label+" "+n.Attributes.ImportPath+" "+n.Attributes.RelativePath+" "+qualified+" "+n.Attributes.ImportPath+"."+qualified), q) {
 				total++
-				if len(out) < graph.MaxViewNodes {
-					out = append(out, n)
+				rank := 3
+				label := strings.ToLower(n.Label)
+				if label == q {
+					rank = 0
+				} else if strings.ToLower(qualified) == q || strings.ToLower(n.Attributes.ImportPath+"."+qualified) == q {
+					rank = 1
+				} else if strings.HasPrefix(label, q) {
+					rank = 2
+				}
+				item := hit{n, rank, strings.ToLower(n.Attributes.ImportPath+"."+qualified) + n.ID}
+				position := sort.Search(len(hits), func(i int) bool { return !less(hits[i], item) })
+				if position < graph.MaxViewNodes {
+					hits = append(hits, hit{})
+					copy(hits[position+1:], hits[position:])
+					hits[position] = item
+					if len(hits) > graph.MaxViewNodes {
+						hits = hits[:graph.MaxViewNodes]
+					}
 				}
 			}
 		}
+	}
+	for _, item := range hits {
+		out = append(out, item.node)
 	}
 	writeJSON(w, 200, struct {
 		Nodes []graph.Node `json:"nodes"`
@@ -179,7 +216,8 @@ func (a *api) file(w http.ResponseWriter, r *http.Request) {
 		ID           string `json:"id"`
 		RelativePath string `json:"relativePath"`
 		Content      string `json:"content"`
-	}{f.ID, f.RelativePath, string(b)})
+		EditorURL    string `json:"editorUrl"`
+	}{f.ID, f.RelativePath, string(b), (&url.URL{Scheme: "vscode", Host: "file", Path: filepath.ToSlash(filepath.Join(a.snapshot.Project.Root, f.RelativePath))}).String()})
 }
 func serveSPA(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" && r.Method != "HEAD" {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -102,5 +103,40 @@ func TestExplorerProjections(t *testing.T) {
 		if err != nil || len(v.Nodes) != tc.count {
 			t.Fatalf("projection %+v: %+v %v", tc.options, v, err)
 		}
+	}
+}
+
+func TestMixedLanguageAndContainerContract(t *testing.T) {
+	content, err := os.ReadFile("../../testdata/contracts/mixed.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var view View
+	if err = json.Unmarshal(content, &view); err != nil {
+		t.Fatal(err)
+	}
+	if view.Nodes[0].Attributes.Language != "python" || view.Nodes[1].Kind != "class" || view.Nodes[2].Attributes.Container.Contents[0].PackageIDs[0] != "python_module" {
+		t.Fatalf("contract lost fields: %+v", view)
+	}
+	encoded, err := json.Marshal(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var original, roundTrip any
+	if err = json.Unmarshal(content, &original); err != nil {
+		t.Fatal(err)
+	}
+	if err = json.Unmarshal(encoded, &roundTrip); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(original, roundTrip) {
+		t.Fatalf("contract changed: %s", encoded)
+	}
+}
+
+func TestContainerContentMustReferenceAnExistingPackage(t *testing.T) {
+	_, err := NewSnapshot(Project{}, AnalysisResult{Nodes: []Node{{ID: "c", Kind: "container", Attributes: Attributes{Container: &Container{Contents: []ContainerContent{{PackageIDs: []string{"missing"}}}}}}}})
+	if err == nil {
+		t.Fatal("accepted dangling container contents")
 	}
 }

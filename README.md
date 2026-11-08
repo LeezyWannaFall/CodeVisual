@@ -1,21 +1,28 @@
 # CodeVisual
 
-**Explore a Go project's architecture in your browser.**
+**Explore Go, Python, and Docker architecture in your browser.**
 
-See package dependencies, inspect source code, browse HTTP routes and SQL tables,
-and follow potential request paths. Runs locally as a single Go binary — no account,
+Detect Go/Python projects automatically, inspect modules and declarations, browse
+HTTP routes and SQL tables, follow potential calls, and explore Docker/Compose diagrams. Runs locally as a single Go binary — no account,
 cloud service, LLM, or database connection required.
 
 ![Package dependency map](pics/image.png)
 
 ## Quick start
 
-Requires **Go 1.26+**. The built frontend is included; Node.js is only needed for development.
+Building from source requires **Go 1.26+**. The built frontend is included;
+Node.js is only needed for development.
 
 Release archives contain a standalone binary for Linux, macOS, or Windows
 (amd64 and arm64), plus this README and the license. Extract the archive for your
 platform and run `codevisual analyze PATH` (`codevisual.exe` on Windows).
-Go must be available in `PATH` for analysis; Node.js is not required.
+Runtime requirements depend on the detected sources:
+
+- **Go:** Go 1.26+ in `PATH`, or the higher version required by the target module.
+- **Python:** Python 3.9+ (`python3` or `python`) in `PATH`. No project packages need installation.
+- **Docker/Compose:** no Docker daemon, Docker CLI, Go installation, or Python installation is required for configuration-only projects.
+
+Mixed projects use both language analyzers. Node.js is not required to run the binary.
 Use `codevisual --version` to inspect the binary version.
 
 ```sh
@@ -38,7 +45,7 @@ The browser opens at **http://127.0.0.1:7331**. Stop the server with `Ctrl+C`.
 Analysis never downloads dependencies or toolchains. Prepare the target project's
 dependencies beforehand for full type information. Missing dependencies or type
 errors produce a partial analysis; click the status in the header to see diagnostics.
-If Go is missing or older than Go 1.26 or the target module's `go` directive,
+For Go modules, if Go is missing or older than Go 1.26 or the target module's `go` directive,
 CodeVisual stops with installation guidance. Install a suitable Go version and
 check `PATH`; analysis never installs it automatically.
 
@@ -46,8 +53,9 @@ check `PATH`; analysis never installs it automatically.
 
 | Section | Features |
 | --- | --- |
-| **Code** | Package and directory maps, imports, types, methods, interfaces, and highlighted Go source |
+| **Code** | Go packages and Python modules, imports, functions, classes, methods, interfaces, and highlighted source |
 | **API** | chi routes with paths, handlers, middleware, and links to source |
+| **Containers** | Compose services, Dockerfile build stages, dependencies, networks, volumes, declared COPY/ADD and mount contents, and links to local code |
 | **Database** | SQL table maps with columns, primary/foreign keys, indexes, and DDL source |
 | **Request Flow** | Potential calls from a handler or function through the current module |
 
@@ -97,13 +105,46 @@ Switch between light and dark themes beside **LOCAL SESSION**.
 
 </details>
 
+## Python and container analysis
+
+The same `codevisual analyze PATH` command detects Go only, Python only, or both.
+Explorer displays the detected languages. Python files do not require a `go.mod`;
+a workspace without a root Go module can contain separate Go modules in child
+directories. Their sources are rebased to the selected workspace for browsing.
+A selected Go module keeps its own boundary and skips nested modules.
+
+Python analysis uses an embedded helper with the installed interpreter's standard
+`ast` module, in isolated mode with site hooks disabled. Project files are parsed
+from input bytes, never imported or executed. It reads functions, async functions,
+classes, methods, annotations, docstrings, imports, and direct lexical calls.
+Unknown receiver types, reassigned or decorated bindings, and other dynamic calls end at explicit
+boundaries; conditional declarations, wildcard imports, and syntax errors are
+reported. Python web-framework route discovery is not implemented; API still
+lists chi registrations. No Go-to-Python runtime call connections are inferred.
+
+**Containers** shows static declarations rather than running containers. Each
+Compose file is shown independently; overrides/includes/extends and host/`.env`
+interpolation are not evaluated. All declared services are shown, including
+profile-specific ones. The map includes `depends_on`, build stages, stage copies,
+networks, and named volumes. Select a service or stage to see its image, workdir,
+command, ports, environment key names, COPY/ADD paths, and mounts.
+
+Local copies and bind mounts link to discovered Go/Python modules. `.dockerignore`
+and Dockerfile-specific ignore rules filter copy associations. External paths,
+remote build contexts, image filesystems, RUN output, archive extraction, and
+compiled artifacts are not inspected. Multi-stage COPY shows the source stage;
+it does not claim a generated binary contains particular source files. Unsupported
+heredocs and path-changing copy flags are diagnosed. Nothing is built, pulled,
+started, or executed by the Docker analyzer.
+
 ## Analysis limits
 
 - **Static analysis:** CodeVisual does not execute project code, handlers, or migrations.
   Request Flow shows possible calls, not a runtime trace; interface implementations
   are explicitly marked as possible.
-- **One Go module:** uses the host OS/architecture and supplied build tags, with cgo
-  disabled. Tests, nested modules, vendor, and symlinked source are excluded.
+- **Go module context:** uses the host OS/architecture and supplied build tags, with cgo
+  disabled. Each discovered module is loaded independently. Tests, nested modules
+  within a module, vendor, and symlinked source are excluded.
   External packages appear as import references; their source is not analyzed.
 - **Source declarations:** dynamic routes may remain unresolved. Database views read
   `CREATE TABLE` and `CREATE [UNIQUE] INDEX` from SQL files, not a final migrated
@@ -116,7 +157,8 @@ The server listens only on `127.0.0.1`. Analysis leaves the target project's
 
 ## Development
 
-Requires **Go 1.26+**, **Node.js 22.16+**, and **npm**.
+Requires **Go 1.26+**, **Python 3.9+**, **Node.js 22.16+**, and **npm**.
+Virtual environments, Python test files/directories, caches, and symlinked source are excluded from discovery.
 
 ```sh
 make build    # Build frontend and bin/codevisual
@@ -138,7 +180,8 @@ npm run test:e2e
 
 ## Checks and release packaging
 
-GitHub Actions runs Go tests, vet, and builds on Linux, macOS, and Windows.
+GitHub Actions runs Go tests, vet, and builds on Linux, macOS, and Windows,
+with Python 3.12 available for the AST analyzer tests.
 The frontend job uses Node.js 22.16.0, installs dependencies with `npm ci`, runs
 Vitest, checks TypeScript during the build, checks embedded asset freshness,
 and runs the self-contained Playwright scenarios, including analysis of this
@@ -168,3 +211,8 @@ in the binary; no runtime CDN is needed.
 ## License
 
 Licensed under the [MIT License](LICENSE). Copyright (c) 2026 LeezyWannaFall.
+
+The source inspector offers **Open in VS Code**, using the local VS Code URI
+handler to open the selected declaration's line and column. VS Code must be
+installed on the same computer as the analysis server. Reverse SQL migrations
+named `*.down.sql` or `*_down.sql` are excluded.

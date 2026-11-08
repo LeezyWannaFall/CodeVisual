@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
 const paths: Record<string, string> = {
+ container: 'M3 5h18v14H3zM7 8v8m5-8v8m5-8v8',
  sun: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5',
  moon: 'M20.5 13A8.5 8.5 0 0 1 11 3.5 8.5 8.5 0 1 0 20.5 13',
  panel: 'M3 4h18v16H3zM15 4v16m-5-11 3 3-3 3',
@@ -21,4 +22,4 @@ const paths: Record<string, string> = {
 export function Icon({ name, size = 16, style }: { name: string; size?: number; style?: CSSProperties }) {
  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={style}><path d={paths[name] ?? paths.code} /></svg>
 }
-export function KindBadge({ kind }: { kind: string }) { return <span className={`kind-badge kind-${kind}`}>{kind === 'function' ? 'ƒ' : kind === 'method' ? 'm' : kind === 'struct' ? 'S' : kind === 'interface' ? 'I' : kind === 'type' ? 'T' : <Icon name={kind === 'table' || kind === 'index' ? 'database' : kind === 'httpRoute' ? 'api' : kind === 'directory' ? 'folder' : 'package'} size={14}/>}</span> }
+export function KindBadge({ kind }: { kind: string }) { return <span className={`kind-badge kind-${kind}`}>{kind === 'function' ? 'ƒ' : kind === 'method' ? 'm' : kind === 'class' ? 'C' : kind === 'struct' ? 'S' : kind === 'interface' ? 'I' : kind === 'type' ? 'T' : <Icon name={['container','dockerStage','containerNetwork','containerVolume'].includes(kind) ? 'container' : kind === 'table' || kind === 'index' ? 'database' : kind === 'httpRoute' ? 'api' : kind === 'directory' ? 'folder' : 'package'} size={14}/>}</span> }
