@@ -61,6 +61,7 @@ type Node struct {
 	Attributes Attributes   `json:"attributes"`
 }
 type Edge struct {
+	Label      string       `json:"label,omitempty"`
 	Resolution string       `json:"resolution,omitempty"`
 	Invocation string       `json:"invocation,omitempty"`
 	ID         string       `json:"id"`

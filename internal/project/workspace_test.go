@@ -59,3 +59,16 @@ func TestOpenKeepsModuleAndSymlinkBoundaries(t *testing.T) {
 		t.Fatalf("unexpected scan: %+v", p)
 	}
 }
+
+func TestDockerfileIgnoreNotDiscoveredAsDockerfile(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "Dockerfile", "FROM scratch\n")
+	write(t, root, "Dockerfile.dockerignore", "*.py\n")
+	p, err := Open(context.Background(), root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Dockerfiles) != 1 {
+		t.Fatalf("Dockerfiles: %v", p.Dockerfiles)
+	}
+}

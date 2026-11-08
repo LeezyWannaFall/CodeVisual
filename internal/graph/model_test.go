@@ -140,3 +140,21 @@ func TestContainerContentMustReferenceAnExistingPackage(t *testing.T) {
 		t.Fatal("accepted dangling container contents")
 	}
 }
+
+func TestContainerViewHidesDefaultNetwork(t *testing.T) {
+	s, err := NewSnapshot(Project{}, AnalysisResult{Nodes: []Node{
+		{ID: "service", Kind: "container", Label: "app"},
+		{ID: "default", Kind: "containerNetwork", Label: "default"},
+		{ID: "custom", Kind: "containerNetwork", Label: "custom"},
+	}, Edges: []Edge{Link("uses_network", "service", "default", nil), Link("uses_network", "service", "custom", nil)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := s.View(ViewOptions{Level: "containers"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(v.Nodes) != 2 || len(v.Edges) != 1 {
+		t.Fatalf("unexpected view: %+v", v)
+	}
+}

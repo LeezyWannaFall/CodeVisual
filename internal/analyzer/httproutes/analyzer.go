@@ -350,7 +350,32 @@ func (w *walker) routerExpr(f *function, e ast.Expr, env map[string]router, stat
 	}
 	if target := w.resolve(f, c.Fun); target != nil && rootFunction(target) {
 		// Evaluate builders once per call site and preserve their returned instance.
-		result := w.run(target, router{scope: state.scope}, nil)
+		bindings := map[string]router{}
+		position := 0
+		if target.decl.Type.Params != nil {
+			for _, field := range target.decl.Type.Params.List {
+				for _, name := range field.Names {
+					if position < len(c.Args) {
+						if value, ok := w.routerExpr(f, c.Args[position], env, state); ok {
+							bindings[name.Name] = value
+						}
+					}
+					position++
+				}
+			}
+		}
+		result := w.run(target, router{scope: state.scope}, bindings)
+		for name, original := range bindings {
+			if updated, ok := result[name]; ok && original.identity == updated.identity {
+				for key, value := range env {
+					if value.identity == original.identity {
+						value.middleware = updated.middleware
+						value.middlewareTargets = updated.middlewareTargets
+						env[key] = value
+					}
+				}
+			}
+		}
 		r, ok := result["$return"]
 		if !ok {
 			w.note(f, c, "http_builder_return", "Router builder return could not be resolved statically")
@@ -682,6 +707,9 @@ func (w *walker) note(f *function, n ast.Node, code, message string) {
 		relevant := false
 		ast.Inspect(n, func(n ast.Node) bool {
 			if c, ok := n.(*ast.CallExpr); ok {
+				if target := w.resolve(f, c.Fun); target != nil && rootFunction(target) {
+					relevant = true
+				}
 				if sel, ok := c.Fun.(*ast.SelectorExpr); ok {
 					switch sel.Sel.Name {
 					case "Get", "Post", "Put", "Patch", "Delete", "Head", "Options", "Method", "MethodFunc", "Handle", "HandleFunc", "Use", "Route", "Group", "Mount":

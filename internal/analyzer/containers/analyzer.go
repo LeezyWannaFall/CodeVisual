@@ -296,7 +296,13 @@ func (w *walker) compose(file string) {
 		}
 		for _, dependency := range keys(service["depends_on"]) {
 			if targetID, ok := ids[dependency]; ok {
-				w.result.Edges = append(w.result.Edges, graph.Link("depends_on", ids[name], targetID, source))
+				edge := graph.Link("depends_on", ids[name], targetID, source)
+				if dependencies, ok := service["depends_on"].(map[string]any); ok {
+					if config, ok := dependencies[dependency].(map[string]any); ok {
+						edge.Label = stringValue(config["condition"])
+					}
+				}
+				w.result.Edges = append(w.result.Edges, edge)
 			} else {
 				w.note("compose_dependency", file+": unknown dependency "+dependency, source)
 			}
@@ -407,7 +413,12 @@ func (w *walker) packages(source string, excluded func(string) bool) []string {
 		}
 		match := source == "." || file == source || strings.HasPrefix(file, source+"/")
 		if !match && strings.ContainsAny(source, "*?[") {
-			match, _ = path.Match(source, file)
+			for candidate := file; candidate != "." && candidate != "/"; candidate = path.Dir(candidate) {
+				match, _ = path.Match(source, candidate)
+				if match {
+					break
+				}
+			}
 		}
 		if !match || excluded != nil && excluded(file) {
 			continue

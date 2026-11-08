@@ -195,7 +195,16 @@ func (Analyzer) Analyze(ctx context.Context, p *project.Project) (graph.Analysis
 					return filepath.SkipDir
 				}
 				if _, e := os.Stat(filepath.Join(path, "go.mod")); e == nil {
-					return filepath.SkipDir
+					rel, _ := filepath.Rel(p.Root, path)
+					included := false
+					for _, module := range p.GoModuleDirs {
+						if filepath.ToSlash(rel) == filepath.ToSlash(module) {
+							included = true
+						}
+					}
+					if !included {
+						return filepath.SkipDir
+					}
 				}
 			}
 			return nil

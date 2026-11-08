@@ -205,7 +205,10 @@ for file, function, qual, caller in functions:
             else:
                 scope = qual.split(".")
                 for length in range(len(scope), -1, -1):
-                    targets = symbols.get(".".join([file["module"]] + scope[:length] + [printed]), [])
+                    scope_key = ".".join([file["module"]] + scope[:length])
+                    if any(nodes[item]["kind"] == "class" for item in symbols.get(scope_key, [])):
+                        continue
+                    targets = symbols.get(scope_key + "." + printed, [])
                     if targets:
                         break
         if len(targets) == 1 and targets[0] not in uncertain_symbols:

@@ -93,3 +93,20 @@ func TestUnsupportedSQLAndMalformedInput(t *testing.T) {
 		t.Fatal("unterminated comment accepted")
 	}
 }
+
+func TestWorkspaceSQLModuleBoundary(t *testing.T) {
+	root := t.TempDir()
+	for name, value := range map[string]string{"service/go.mod": "module example.test/service\n", "service/schema.sql": "CREATE TABLE included(id int);", "service/nested/go.mod": "module example.test/nested\n", "service/nested/schema.sql": "CREATE TABLE excluded(id int);"} {
+		file := filepath.Join(root, name)
+		os.MkdirAll(filepath.Dir(file), 0755)
+		os.WriteFile(file, []byte(value), 0644)
+	}
+	p := &project.Project{Project: graph.Project{Root: root}, GoModuleDirs: []string{"service"}}
+	r, err := (Analyzer{}).Analyze(context.Background(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Nodes) != 1 || r.Nodes[0].Label != "included" {
+		t.Fatalf("nodes: %+v", r.Nodes)
+	}
+}

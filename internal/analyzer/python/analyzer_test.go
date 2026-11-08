@@ -136,3 +136,34 @@ func TestDecoratedBindingsStopAtDynamicBoundary(t *testing.T) {
 		t.Fatal("missing dynamic boundary")
 	}
 }
+
+func TestMethodBareNameUsesGlobal(t *testing.T) {
+	_, r := analyze(t, map[string]string{"app.py": "def target(): pass\nclass Worker:\n def target(self): pass\n def run(self): target()\n"})
+	var global, run, method string
+	for _, n := range r.Nodes {
+		if n.Label == "target" {
+			if n.Kind == "function" {
+				global = n.ID
+			} else {
+				method = n.ID
+			}
+		}
+		if n.Label == "run" {
+			run = n.ID
+		}
+	}
+	found := false
+	for _, e := range r.Edges {
+		if e.SourceID == run && e.Kind == "calls" {
+			if e.TargetID == method {
+				t.Fatal("resolved class namespace")
+			}
+			if e.TargetID == global {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatal("missing global call")
+	}
+}

@@ -118,3 +118,32 @@ func TestUnresolvedConfigurationIsDiagnosed(t *testing.T) {
 		}
 	}
 }
+
+func TestCopyCannotEscapeContext(t *testing.T) {
+	_, r := setup(t, map[string]string{"app.py": "pass", "build/Dockerfile": "FROM scratch\nCOPY ../app.py /app/\nADD /app.py /app/\n", "compose.yaml": "services:\n  app:\n    build: ./build\n"})
+	for _, n := range r.Nodes {
+		if c := n.Attributes.Container; c != nil {
+			for _, item := range c.Contents {
+				if len(item.PackageIDs) > 0 {
+					t.Fatalf("outside context associated: %+v", item)
+				}
+			}
+		}
+	}
+}
+func TestWildcardCopiesMatchedDirectories(t *testing.T) {
+	w := &walker{code: graph.AnalysisResult{Files: []graph.File{{ID: "file", RelativePath: "src/pkg/app.py"}}, Nodes: []graph.Node{{ID: "pkg", Kind: "package", Source: &graph.SourceRange{FileID: "file"}}}}}
+	if ids := w.packages("src/*", nil); len(ids) != 1 {
+		t.Fatalf("missing directory contents: %v", ids)
+	}
+}
+
+func TestCompletionDependencyDeclaration(t *testing.T) {
+	_, r := setup(t, map[string]string{"compose.yaml": "services:\n  app:\n    image: app\n    depends_on:\n      migration:\n        condition: service_completed_successfully\n  migration:\n    image: worker\n"})
+	for _, edge := range r.Edges {
+		if edge.Kind == "depends_on" && edge.Label == "service_completed_successfully" {
+			return
+		}
+	}
+	t.Fatal("missing completion condition")
+}

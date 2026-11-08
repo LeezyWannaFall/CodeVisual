@@ -269,7 +269,7 @@ func (w *walker) dockerfile(file, contextDir string) []stage {
 					}
 				} else if strings.Contains(src, "://") {
 					content.Kind = "remote"
-				} else if resolved, ok := local(contextDir, src); ok {
+				} else if resolved, ok := local(contextDir, src); ok && !path.IsAbs(src) && (contextDir == "." || resolved == contextDir || strings.HasPrefix(resolved, contextDir+"/")) {
 					content.PackageIDs = w.packages(resolved, excluded)
 				} else {
 					w.note("docker_copy", file+": unresolved or external COPY/ADD source "+src, source)

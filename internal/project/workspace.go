@@ -117,7 +117,7 @@ func Open(ctx context.Context, input string, tags []string) (*Project, error) {
 			p.PythonFiles = append(p.PythonFiles, rel)
 		case IsCompose(base):
 			p.ComposeFiles = append(p.ComposeFiles, rel)
-		case base == "Dockerfile" || strings.HasPrefix(base, "Dockerfile.") || strings.HasSuffix(base, ".Dockerfile"):
+		case !strings.HasSuffix(base, ".dockerignore") && (base == "Dockerfile" || strings.HasPrefix(base, "Dockerfile.") || strings.HasSuffix(base, ".Dockerfile")):
 			p.Dockerfiles = append(p.Dockerfiles, rel)
 		}
 		return nil

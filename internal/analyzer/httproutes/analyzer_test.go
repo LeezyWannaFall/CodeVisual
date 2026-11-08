@@ -327,3 +327,36 @@ func Routes() chi.Router {
 		t.Fatalf("routes=%+v diagnostics=%+v", r.Nodes, r.Diagnostics)
 	}
 }
+
+func TestExtendPreservesRouter(t *testing.T) {
+	r := analyzeSource(t, `package app
+import "github.com/go-chi/chi/v5"
+func Routes() chi.Router { r := chi.NewRouter(); r.Use(Auth); s := Extend(r); s.Get("/after", H); return r }
+func Extend(r chi.Router) chi.Router { r.Use(Log); r.Get("/inside", H); return r }
+`)
+	found := false
+	for _, n := range r.Nodes {
+		if h := n.Attributes.HTTP; h != nil && h.Path == "/after" {
+			found = true
+			if len(h.Middleware) != 2 {
+				t.Fatalf("middleware: %+v", h)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("missing route")
+	}
+}
+func TestConditionalHelperDiagnostic(t *testing.T) {
+	r := analyzeSource(t, `package app
+import "github.com/go-chi/chi/v5"
+func Routes() chi.Router { r := chi.NewRouter(); if enabled { Register(r) }; return r }
+func Register(r chi.Router) { r.Get("/conditional", H) }
+`)
+	for _, d := range r.Diagnostics {
+		if d.Code == "http_conditional" {
+			return
+		}
+	}
+	t.Fatal("missing conditional diagnostic")
+}

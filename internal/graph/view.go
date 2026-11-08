@@ -46,6 +46,9 @@ func (s *Snapshot) View(o ViewOptions) (View, error) {
 		case "http":
 			match = n.Kind == "httpRoute"
 		case "containers":
+			if n.Kind == "containerNetwork" && n.Label == "default" {
+				continue
+			}
 			match = n.Kind == "container" || n.Kind == "dockerStage" || n.Kind == "containerNetwork" || n.Kind == "containerVolume"
 		case "database":
 			match = n.Kind == "table" || n.Kind == "index"
@@ -62,7 +65,14 @@ func (s *Snapshot) View(o ViewOptions) (View, error) {
 		if o.Method != "" && (n.Attributes.HTTP == nil || n.Attributes.HTTP.Method != o.Method) {
 			continue
 		}
-		if o.Kind != "" && n.Kind != o.Kind {
+		containerFilter := o.Level == "containers" && (o.Kind == "compose" || o.Kind == "dockerfile")
+		if containerFilter {
+			docker := n.Kind == "dockerStage" || n.Attributes.Container != nil && n.Attributes.Container.Type == "dockerfile"
+			if (o.Kind == "dockerfile") != docker {
+				continue
+			}
+		}
+		if o.Kind != "" && !containerFilter && n.Kind != o.Kind {
 			continue
 		}
 		if o.ExportedOnly && !n.Attributes.Exported {
