@@ -147,3 +147,14 @@ func TestCompletionDependencyDeclaration(t *testing.T) {
 	}
 	t.Fatal("missing completion condition")
 }
+
+func TestLocalRejectsAbsolutePathsAcrossPlatforms(t *testing.T) {
+	for _, value := range []string{"/outside", "/outside/data", "C:/outside", `C:\outside`, `\server\share`, "../outside"} {
+		if resolved, ok := local(".", value); ok {
+			t.Errorf("accepted external path %q as %q", value, resolved)
+		}
+	}
+	if value, ok := local("build", "./src"); !ok || value != "build/src" {
+		t.Fatalf("local source: %q %v", value, ok)
+	}
+}

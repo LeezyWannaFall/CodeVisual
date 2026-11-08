@@ -31,7 +31,7 @@ func TestOpenDetectsLanguagesAndInfrastructure(t *testing.T) {
 			if got := strings.Join(p.Languages, ","); got != tt.languages {
 				t.Fatalf("languages=%s", got)
 			}
-			if p.Root != root {
+			if !sameDirectory(t, p.Root, root) {
 				t.Fatalf("root=%s", p.Root)
 			}
 			if tt.name == "python" && len(p.PythonFiles) != 1 {

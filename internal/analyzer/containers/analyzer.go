@@ -93,7 +93,7 @@ func location(file string, line, end int) *graph.SourceRange {
 	return &graph.SourceRange{FileID: graph.ID("file", file), StartLine: line, StartColumn: 1, EndLine: end, EndColumn: 1}
 }
 func local(base, relative string) (string, bool) {
-	if strings.ContainsAny(relative, "$\x00") || strings.Contains(relative, ":") || strings.HasPrefix(relative, "~") || filepath.IsAbs(relative) || strings.Contains(relative, "\\") {
+	if strings.ContainsAny(relative, "$\x00") || strings.Contains(relative, ":") || strings.HasPrefix(relative, "~") || path.IsAbs(relative) || filepath.IsAbs(relative) || strings.Contains(relative, "\\") {
 		return "", false
 	}
 	value := path.Clean(path.Join(base, relative))

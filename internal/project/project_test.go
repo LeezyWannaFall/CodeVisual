@@ -37,7 +37,7 @@ func TestDiscoverBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Root != root || strings.Join(p.Directories, ",") != ".,sub" {
+	if !sameDirectory(t, p.Root, root) || strings.Join(p.Directories, ",") != ".,sub" {
 		t.Fatalf("unexpected discovery: %+v", p)
 	}
 	if len(p.Diagnostics) != 2 {
@@ -160,4 +160,18 @@ func TestLoadExplainsModuleToolchainRequirement(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, "go.sum")); !os.IsNotExist(err) {
 		t.Fatalf("unexpected go.sum: %v", err)
 	}
+}
+
+// EvalSymlinks may normalize Windows path casing and temporary directory aliases.
+func sameDirectory(t *testing.T, a, b string) bool {
+	t.Helper()
+	left, err := os.Stat(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := os.Stat(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return os.SameFile(left, right)
 }
