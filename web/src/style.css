@@ -2328,3 +2328,18 @@ html.theme-transition::view-transition-new(root) {
 .symbol-layer + .symbol-layer { margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--border); }
 .symbol-layer > h3 { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; font-size: 12px; font-weight: 600; color: var(--palette-aaa, #aaa); }
 .symbol-layer > h3 > span { font: 10px ui-monospace, monospace; opacity: .6; }
+
+.diagnostic-group { border-bottom: 1px solid var(--border); padding: 12px 0; }
+.diagnostic-group > summary { display: flex; align-items: baseline; gap: 12px; cursor: pointer; font-size: 11px; }
+.diagnostic-group summary p { flex: 1; overflow-wrap: anywhere; }
+.diagnostic-group summary > span { color: var(--accent-light); min-width: 100px; }
+.diagnostic-group summary b { white-space: nowrap; }
+.diagnostic-occurrence { margin: 10px 0 0 20px; padding: 8px; border-left: 2px solid var(--border); font-size: 11px; }
+.diagnostic-occurrence button { color: var(--accent-light); margin-left: 12px; }
+
+.large-graph-notice { margin: 0 0 10px; font-size: 11px; line-height: 1.6; color: var(--palette-aaa, #aaa); }
+.flow-notice button { margin-left: 8px; color: var(--accent-light); text-decoration: underline; }
+.container-title { align-items: flex-start; }
+.container-title small { flex-shrink: 0; padding-top: 3px; }
+.container-map-node .container-image { min-height: 30px; line-height: 15px; overflow-wrap: anywhere; }
+.container-map-node .container-title strong { white-space: normal; overflow-wrap: anywhere; }

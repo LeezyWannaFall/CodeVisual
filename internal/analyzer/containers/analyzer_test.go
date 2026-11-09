@@ -158,3 +158,62 @@ func TestLocalRejectsAbsolutePathsAcrossPlatforms(t *testing.T) {
 		t.Fatalf("local source: %q %v", value, ok)
 	}
 }
+
+func TestStaticWorkdirAndCopyFlags(t *testing.T) {
+	_, r := setup(t, map[string]string{"app.py": "pass", "ignored.py": "pass", "Dockerfile": "FROM scratch\nARG ROOT=/srv\nENV APP=code\nWORKDIR ${ROOT}/${APP}\nCOPY --exclude=ignored.py . .\nCOPY --parents ./app.py /preserved/\n"})
+	found := false
+	for _, n := range r.Nodes {
+		if c := n.Attributes.Container; c != nil && n.Kind == "dockerStage" {
+			if c.Workdir != "/srv/code" {
+				t.Fatalf("workdir=%s", c.Workdir)
+			}
+			for _, item := range c.Contents {
+				for _, id := range item.PackageIDs {
+					if id == graph.ID("package", "ignored.py") {
+						t.Fatal("excluded source linked")
+					}
+				}
+				if item.Source == "app.py" && item.Target == "/preserved/app.py" {
+					found = true
+				}
+			}
+		}
+	}
+	if !found {
+		t.Fatal("missing preserved source mapping")
+	}
+	if len(r.Diagnostics) > 0 {
+		t.Fatalf("diagnostics=%+v", r.Diagnostics)
+	}
+}
+
+func TestVariablesAreScopedAndUnknownValuesDoNotCreateMappings(t *testing.T) {
+	_, r := setup(t, map[string]string{"app.py": "pass", "Dockerfile": "ARG ROOT=/global\nFROM scratch AS first\nARG ROOT\nWORKDIR ${ROOT}\nENV SUB=code\nFROM first AS inherited\nWORKDIR /srv/$SUB\nFROM scratch AS isolated\nWORKDIR $SUB\nCOPY $UNKNOWN /app/\n"})
+	workdirs := map[string]string{}
+	for _, n := range r.Nodes {
+		if n.Kind == "dockerStage" {
+			workdirs[n.Label] = n.Attributes.Container.Workdir
+			if n.Label == "isolated" && len(n.Attributes.Container.Contents) != 0 {
+				t.Fatal("unknown source mapped")
+			}
+		}
+	}
+	if workdirs["first"] != "/global" || workdirs["inherited"] != "/srv/code" || workdirs["isolated"] != "" {
+		t.Fatalf("scope: %v", workdirs)
+	}
+	if len(r.Diagnostics) != 2 {
+		t.Fatalf("unknown diagnostics: %+v", r.Diagnostics)
+	}
+}
+func TestCopyParentsPivotAndIgnore(t *testing.T) {
+	_, r := setup(t, map[string]string{"app.py": "pass", "ignored.py": "pass", ".dockerignore": "ignored.py\n", "Dockerfile": "FROM scratch\nCOPY --parents ././app.py /app/\nCOPY --exclude=app.py . /excluded/\n"})
+	for _, n := range r.Nodes {
+		if n.Kind != "dockerStage" {
+			continue
+		}
+		c := n.Attributes.Container
+		if len(c.Contents) != 2 || c.Contents[0].Target != "/app/app.py" || len(c.Contents[0].PackageIDs) != 1 || len(c.Contents[1].PackageIDs) != 0 {
+			t.Fatalf("contents: %+v", c.Contents)
+		}
+	}
+}

@@ -32,11 +32,12 @@ type Package struct {
 	TypesInfo  *types.Info
 }
 type Project struct {
-	HasGoModule  bool
-	GoModuleDirs []string
-	PythonFiles  []string
-	ComposeFiles []string
-	Dockerfiles  []string
+	RequiredModules []string
+	HasGoModule     bool
+	GoModuleDirs    []string
+	PythonFiles     []string
+	ComposeFiles    []string
+	Dockerfiles     []string
 	graph.Project
 	Directories  []string
 	Packages     []Package
@@ -83,6 +84,9 @@ func Discover(ctx context.Context, path string, tags []string) (*Project, error)
 		return nil, fmt.Errorf("go.mod has no module directive")
 	}
 	p := &Project{Project: graph.Project{Root: root, ModulePath: mf.Module.Mod.Path, RootName: filepath.Base(root), BuildContext: graph.BuildContext{GOOS: runtime.GOOS, GOARCH: runtime.GOARCH, Tags: append([]string{}, tags...), ConfigurationKnown: true}}, Directories: []string{}, Packages: []Package{}, Diagnostics: []graph.Diagnostic{}}
+	for _, dependency := range mf.Require {
+		p.RequiredModules = append(p.RequiredModules, dependency.Mod.Path)
+	}
 	for dir := root; ; dir = filepath.Dir(dir) {
 		if _, err := os.Stat(filepath.Join(dir, "go.work")); err == nil {
 			p.note("info", "workspace_ignored", "go.work is ignored; only the selected module is analyzed")
@@ -221,6 +225,10 @@ func (p *Project) Load(ctx context.Context) error {
 	if err = validateToolchain(strings.TrimSpace(string(output)), required); err != nil {
 		return err
 	}
+	versionMismatch := version.IsValid(runtime.Version()) && version.Lang(strings.TrimSpace(string(output))) != version.Lang(runtime.Version())
+	if versionMismatch {
+		p.note("warning", "go_version_mismatch", "CodeVisual was built with "+runtime.Version()+" but the loader uses "+strings.TrimSpace(string(output))+"; rebuild CodeVisual with the loader's Go version for reliable source processing")
+	}
 	flags := []string{"-mod=readonly", "-modfile=" + alternate}
 	if len(p.BuildContext.Tags) > 0 {
 		flags = append(flags, "-tags="+strings.Join(p.BuildContext.Tags, ","))
@@ -254,6 +262,9 @@ func (p *Project) Load(ctx context.Context) error {
 	byDir := map[string]*packages.Package{}
 	for _, pkg := range loaded {
 		for _, e := range pkg.Errors {
+			if versionMismatch && strings.Contains(e.Msg, "version of the source-processing packages") {
+				continue
+			}
 			p.note("warning", "package_load", strings.ReplaceAll(strings.ReplaceAll(e.Error(), p.Root+string(filepath.Separator), ""), scratch, "<analysis>"))
 		}
 		files := append(append([]string{}, pkg.GoFiles...), pkg.IgnoredFiles...)
@@ -397,4 +408,17 @@ func ReadFile(root, relative string) ([]byte, error) {
 		}
 	}
 	return r.ReadFile(native)
+}
+
+// InternalImport distinguishes independent required modules from packages in this module.
+func (p *Project) InternalImport(importPath string) bool {
+	if importPath != p.ModulePath && !strings.HasPrefix(importPath, p.ModulePath+"/") {
+		return false
+	}
+	for _, module := range p.RequiredModules {
+		if module != p.ModulePath && (importPath == module || strings.HasPrefix(importPath, module+"/")) {
+			return false
+		}
+	}
+	return true
 }

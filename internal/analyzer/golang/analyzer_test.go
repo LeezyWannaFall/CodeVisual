@@ -220,3 +220,28 @@ func TestUnresolvedInternalImport(t *testing.T) {
 		t.Fatal("missing import reference")
 	}
 }
+
+func TestRequiredModuleSharingRootPrefixIsExternal(t *testing.T) {
+	root := t.TempDir()
+	put(t, root, "dep/go.mod", "module example.test/dep\ngo 1.26.0\n")
+	put(t, root, "dep/dep.go", "package dep\ntype Value string\n")
+	put(t, root, "app/go.mod", "module example.test\ngo 1.26.0\nrequire example.test/dep v0.0.0\nreplace example.test/dep => ../dep\n")
+	put(t, root, "app/app.go", "package app\nimport \"example.test/dep\"\nfunc Value() dep.Value { return \"x\" }\n")
+	before := contents(t, root)
+	s := analyze(t, filepath.Join(root, "app"), nil)
+	found := false
+	for _, n := range s.Nodes {
+		if n.Attributes.ImportPath == "example.test/dep" {
+			found = true
+			if n.Kind != "externalPackage" {
+				t.Fatalf("separate module treated as internal: %+v", n)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("missing import")
+	}
+	if !reflect.DeepEqual(before, contents(t, root)) {
+		t.Fatal("target metadata changed")
+	}
+}

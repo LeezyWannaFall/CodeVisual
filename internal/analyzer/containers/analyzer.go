@@ -397,8 +397,8 @@ func (w *walker) ignore(contextDir, file string) *patternmatcher.PatternMatcher 
 	}
 	return matcher
 }
-func (w *walker) packages(source string, excluded func(string) bool) []string {
-	matched := map[string]bool{}
+func (w *walker) packageFiles(source string, excluded func(string) bool) map[string][]string {
+	matched := map[string]map[string]bool{}
 	files := map[string]string{}
 	for _, f := range w.code.Files {
 		files[f.ID] = f.RelativePath
@@ -428,11 +428,30 @@ func (w *walker) packages(source string, excluded func(string) bool) []string {
 			id = n.ID
 		}
 		if id != "" {
-			matched[id] = true
+			if matched[file] == nil {
+				matched[file] = map[string]bool{}
+			}
+			matched[file][id] = true
+		}
+	}
+	out := map[string][]string{}
+	for file, ids := range matched {
+		for id := range ids {
+			out[file] = append(out[file], id)
+		}
+		sort.Strings(out[file])
+	}
+	return out
+}
+func (w *walker) packages(source string, excluded func(string) bool) []string {
+	ids := map[string]bool{}
+	for _, values := range w.packageFiles(source, excluded) {
+		for _, id := range values {
+			ids[id] = true
 		}
 	}
 	out := []string{}
-	for id := range matched {
+	for id := range ids {
 		out = append(out, id)
 	}
 	sort.Strings(out)

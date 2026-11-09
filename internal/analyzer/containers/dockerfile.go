@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
@@ -130,6 +131,9 @@ func (w *walker) dockerfile(file, contextDir string) []stage {
 	}
 	stages := []stage{}
 	byName := map[string]int{}
+	globalArgs := map[string]string{}
+	stageVars := []map[string]string{}
+	vars := map[string]string{}
 	matcher := w.ignore(contextDir, file)
 	excluded := func(name string) bool {
 		if matcher == nil {
@@ -152,6 +156,27 @@ func (w *walker) dockerfile(file, contextDir string) []stage {
 			w.note("dockerfile_parse", file+": "+err.Error(), source)
 			continue
 		}
+		if item.name == "ARG" {
+			if len(args) == 1 {
+				key, value, hasDefault := strings.Cut(args[0], "=")
+				if hasDefault {
+					expanded, known := expandStatic(value, vars)
+					if known {
+						vars[key] = expanded
+					} else {
+						delete(vars, key)
+					}
+				} else if value, ok := globalArgs[key]; ok {
+					vars[key] = value
+				} else {
+					delete(vars, key)
+				}
+				if len(stages) == 0 {
+					globalArgs = copyVariables(vars)
+				}
+			}
+			continue
+		}
 		if item.name == "FROM" {
 			for len(args) > 0 && strings.HasPrefix(args[0], "--") {
 				args = args[1:]
@@ -160,6 +185,11 @@ func (w *walker) dockerfile(file, contextDir string) []stage {
 				w.note("dockerfile_from", file+": missing FROM image", source)
 				continue
 			}
+			vars = map[string]string{}
+			if previous, ok := byName[strings.ToLower(args[0])]; ok {
+				vars = copyVariables(stageVars[previous])
+			}
+			stageVars = append(stageVars, vars)
 			name := strconv.Itoa(len(stages))
 			if len(args) >= 3 && strings.EqualFold(args[1], "AS") {
 				name = args[2]
@@ -199,14 +229,19 @@ func (w *walker) dockerfile(file, contextDir string) []stage {
 				w.note("docker_workdir", file+": invalid WORKDIR", source)
 				continue
 			}
+			expanded, known := expandStatic(args[0], vars)
+			if !known {
+				current.data.Workdir = ""
+				w.note("docker_variables", file+": WORKDIR contains an unknown variable", source)
+				continue
+			}
+			args[0] = expanded
 			if path.IsAbs(args[0]) {
 				current.data.Workdir = path.Clean(args[0])
 			} else {
 				current.data.Workdir = path.Join(current.data.Workdir, args[0])
 			}
-			if strings.Contains(item.value, "$") {
-				w.note("docker_variables", file+": WORKDIR variable is not expanded", source)
-			}
+
 		case "CMD":
 			current.data.Command = item.value
 		case "ENTRYPOINT":
@@ -216,6 +251,25 @@ func (w *walker) dockerfile(file, contextDir string) []stage {
 		case "VOLUME":
 			current.data.Volumes = append(current.data.Volumes, item.value)
 		case "ENV":
+			previous := copyVariables(vars)
+			if len(args) > 0 && !strings.Contains(args[0], "=") {
+				value, known := expandStatic(strings.Join(args[1:], " "), previous)
+				if known {
+					vars[args[0]] = value
+				} else {
+					delete(vars, args[0])
+				}
+			} else {
+				for _, arg := range args {
+					key, value, _ := strings.Cut(arg, "=")
+					value, known := expandStatic(value, previous)
+					if known {
+						vars[key] = value
+					} else {
+						delete(vars, key)
+					}
+				}
+			}
 			if len(args) > 0 && !strings.Contains(args[0], "=") {
 				current.data.EnvironmentKeys = append(current.data.EnvironmentKeys, args[0])
 			} else {
@@ -225,6 +279,8 @@ func (w *walker) dockerfile(file, contextDir string) []stage {
 			}
 		case "COPY", "ADD":
 			from := ""
+			parents := false
+			excludes := []string{}
 			value := item.value
 			for strings.HasPrefix(value, "--") {
 				end := strings.IndexFunc(value, unicode.IsSpace)
@@ -237,10 +293,11 @@ func (w *walker) dockerfile(file, contextDir string) []stage {
 				if strings.HasPrefix(flag, "--from=") {
 					from = strings.TrimPrefix(flag, "--from=")
 				}
-				if strings.HasPrefix(flag, "--exclude") || flag == "--parents" {
-					w.note("docker_copy_flags", file+": COPY exclude/parents mapping is not expanded", source)
-					value = ""
-					break
+				if flag == "--parents" {
+					parents = true
+				}
+				if strings.HasPrefix(flag, "--exclude=") {
+					excludes = append(excludes, strings.Trim(strings.TrimPrefix(flag, "--exclude="), "\"'"))
 				}
 			}
 			if value == "" {
@@ -256,6 +313,31 @@ func (w *walker) dockerfile(file, contextDir string) []stage {
 				w.note("docker_copy", file+": unsupported COPY/ADD declaration", source)
 				continue
 			}
+			known := true
+			for i, value := range paths {
+				var ok bool
+				paths[i], ok = expandStatic(value, vars)
+				known = known && ok
+			}
+			if !known {
+				w.note("docker_variables", file+": COPY/ADD contains unknown variables", source)
+				continue
+			}
+			invalidExclude := false
+			for i, pattern := range excludes {
+				expanded, known := expandStatic(pattern, vars)
+				if !known {
+					invalidExclude = true
+				}
+				excludes[i] = expanded
+				if _, err := path.Match(expanded, "probe"); err != nil {
+					invalidExclude = true
+				}
+			}
+			if invalidExclude {
+				w.note("docker_copy_flags", file+": invalid exclude pattern", source)
+				continue
+			}
 			destination := paths[len(paths)-1]
 			if !path.IsAbs(destination) && current.data.Workdir != "" {
 				destination = path.Join(current.data.Workdir, destination)
@@ -263,6 +345,9 @@ func (w *walker) dockerfile(file, contextDir string) []stage {
 			for _, src := range paths[:len(paths)-1] {
 				content := graph.ContainerContent{Kind: strings.ToLower(item.name), Source: src, Target: destination, From: from, PackageIDs: []string{}}
 				if from != "" {
+					if parents || len(excludes) > 0 {
+						w.note("docker_copy_flags", file+": stage copy path flags require an unknown stage filesystem", source)
+					}
 					content.Kind = "stage"
 					if index, ok := byName[strings.ToLower(from)]; ok && index < len(stages)-1 {
 						w.result.Edges = append(w.result.Edges, graph.Link("copies_from", current.id, stages[index].id, source))
@@ -270,7 +355,51 @@ func (w *walker) dockerfile(file, contextDir string) []stage {
 				} else if strings.Contains(src, "://") {
 					content.Kind = "remote"
 				} else if resolved, ok := local(contextDir, src); ok && !path.IsAbs(src) && (contextDir == "." || resolved == contextDir || strings.HasPrefix(resolved, contextDir+"/")) {
-					content.PackageIDs = w.packages(resolved, excluded)
+					copyExcluded := func(name string) bool {
+						if excluded(name) {
+							return true
+						}
+						relative := strings.TrimPrefix(name, strings.TrimSuffix(contextDir, "/")+"/")
+						if contextDir == "." {
+							relative = name
+						}
+						for _, pattern := range excludes {
+							for candidate := relative; candidate != "."; candidate = path.Dir(candidate) {
+								if match, _ := path.Match(pattern, candidate); match {
+									return true
+								}
+							}
+						}
+						return false
+					}
+					if parents {
+						pivot := ""
+						if index := strings.LastIndex(src, "/./"); index >= 0 {
+							pivot = strings.TrimPrefix(path.Clean(src[:index+1]), "./") + "/"
+							if pivot == "./" {
+								pivot = ""
+							}
+						}
+						mappedFiles := w.packageFiles(resolved, copyExcluded)
+						for _, codeFile := range w.code.Files {
+							ids := mappedFiles[codeFile.RelativePath]
+							if len(ids) == 0 {
+								continue
+							}
+							relative := strings.TrimPrefix(codeFile.RelativePath, strings.TrimSuffix(contextDir, "/")+"/")
+							if contextDir == "." {
+								relative = codeFile.RelativePath
+							}
+							target := strings.TrimPrefix(relative, pivot)
+							mapped := content
+							mapped.Source = relative
+							mapped.Target = path.Join(destination, target)
+							mapped.PackageIDs = ids
+							current.data.Contents = append(current.data.Contents, mapped)
+						}
+						continue
+					}
+					content.PackageIDs = w.packages(resolved, copyExcluded)
 				} else {
 					w.note("docker_copy", file+": unresolved or external COPY/ADD source "+src, source)
 				}
@@ -283,4 +412,29 @@ func (w *walker) dockerfile(file, contextDir string) []stage {
 	}
 	w.builds[key] = stages
 	return stages
+}
+
+var staticVariable = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)`)
+
+func copyVariables(values map[string]string) map[string]string {
+	result := map[string]string{}
+	for key, value := range values {
+		result[key] = value
+	}
+	return result
+}
+func expandStatic(value string, values map[string]string) (string, bool) {
+	known := true
+	expanded := staticVariable.ReplaceAllStringFunc(value, func(token string) string {
+		name := strings.Trim(strings.TrimPrefix(token, "$"), "{}")
+		replacement, ok := values[name]
+		if !ok || strings.Contains(replacement, "$") {
+			known = false
+		}
+		return replacement
+	})
+	if strings.Contains(expanded, "$") {
+		known = false
+	}
+	return expanded, known
 }

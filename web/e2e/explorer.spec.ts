@@ -419,3 +419,16 @@ test('Request Flow can select a route from the second API page', async ({ page, 
  await expect(page.getByRole('combobox', { name: 'Flow entry point' })).toContainText('/health')
  await expect(page.locator('.react-flow__node').filter({ has: page.locator('.node-name', { hasText: /^Health$/ }) })).toHaveCount(1)
 })
+
+test('large graphs keep readable initial zoom and offer directory navigation', async ({ page }) => {
+ await page.route('**/api/v1/graph?**', async route => {
+  const nodes = Array.from({ length: 40 }, (_, i) => ({ id: 'large-' + i, kind: 'package', label: 'Package' + i, attributes: { exported: false } }))
+  const edges = nodes.slice(1).map((node, i) => ({ id: 'edge-' + i, kind: 'imports', sourceId: nodes[i].id, targetId: node.id }))
+  await route.fulfill({ json: { analysisId: 'large', nodes, edges, totalNodes: 40, hiddenNodes: 0 } })
+ })
+ await page.goto('/')
+ await expect(page.getByRole('button', { name: 'Browse directories', exact: true })).toBeVisible()
+ await expect(page.locator('.large-graph-notice')).toBeVisible()
+ await expect(page.locator('.react-flow__node')).toHaveCount(40)
+ await expect.poll(async () => page.locator('.react-flow__viewport').evaluate(node => new DOMMatrix(getComputedStyle(node).transform).a)).toBeGreaterThanOrEqual(.45)
+})
