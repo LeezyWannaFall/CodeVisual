@@ -27,7 +27,6 @@ export function SymbolOverview({ view, selected, onSelect, inline = false }: { v
    { label: 'Interfaces', nodes: owners.filter(n => n.kind === 'interface') },
   ].filter(group => group.nodes.length > 0).map(group => <section className="symbol-layer" key={group.label} aria-label={group.label}><h3>{group.label}<span>{group.nodes.length}</span></h3><div className="symbol-groups">{group.nodes.map(n => { const children = methods.get(n.id) ?? []; return <section className={`symbol-group ${selected?.id === n.id ? 'selected' : ''}`} key={n.id}>
    <button className="symbol-group-title" title={n.label} onClick={() => onSelect(n)}><KindBadge kind={n.kind}/><span><strong>{n.label}</strong><small>{n.kind}{n.kind !== 'interface' && n.attributes.members?.length ? ` · ${n.attributes.members.length} ${n.attributes.members.length === 1 ? 'member' : 'members'}` : ''}</small></span></button>
-   {n.attributes.documentation && <p className="symbol-doc">{n.attributes.documentation.split('\n')[0]}</p>}
    {n.kind !== 'interface' && children.length === 0 && <div className="symbol-no-methods"><span>No methods declared</span><span>0</span></div>}
 
    {n.kind !== 'interface' && children.length > 0 && <details className="symbol-methods" open={children.some(n => n.id === selected?.id)}><summary>Methods <span>{children.length}</span></summary><div>{children.sort((a,b) => a.label.localeCompare(b.label)).map(row)}</div></details>}

@@ -22,7 +22,7 @@ function Entity({ data }: NodeProps<VisualNode>) {
   const c = n.attributes.container
   return <div className={`entity-node container-map-node nopan ${data.completion ? 'completion-task' : ''} ${data.active ? 'active' : ''}`}>
    {data.ports.map(port => <Handle key={port.id} id={port.id} type={port.side === 'in' ? 'target' : 'source'} position={port.side === 'in' ? Position.Left : Position.Right} style={{ top: port.y }}/>)}
-   <div className="container-title"><Icon name="container"/><strong className="node-name">{n.label}</strong><small>{n.kind === 'dockerStage' ? 'BUILD STAGE' : 'SERVICE'}</small></div>
+   <div className="container-title"><Icon name="container"/><strong className="node-name">{n.label}</strong><small>{n.kind === 'dockerStage' ? 'BUILD STAGE' : c.type === 'dockerfile' ? 'BUILD CONFIG' : 'SERVICE'}</small></div>
    {data.completion && <div className="container-task-badge">✓ Completion task · declared</div>}<div className="container-section-label">BASE IMAGE</div><code className="container-image">{c.image || c.dockerfile || 'Declared service'}</code>
    {c.ports.length > 0 && <div className="container-ports"><span>PORTS</span>{c.ports.map(port => <code key={port}>{port}</code>)}</div>}
    <details open={expansion.expanded.has(n.id)} onToggle={event => expansion.toggle(n.id, event.currentTarget.open)} className="container-file-map nodrag nowheel" onClick={event => event.stopPropagation()}><summary onClick={event => { event.preventDefault(); expansion.toggle(n.id, !expansion.expanded.has(n.id)) }}>File transfers <span>{c.contents.length}</span></summary><div className="container-card-contents">{c.contents.map((item,i) => <div className="file-transfer" key={i}><span className="transfer-kind">{item.kind === 'stage' ? 'From build stage' : item.kind === 'bind' ? 'Local mount' : item.kind.toUpperCase()}</span><div className="transfer-route"><code className="transfer-cloud" title={item.source}>{item.source || 'volume'}</code><span className="transfer-arrow" aria-label="to">→</span><code className="transfer-cloud destination" title={item.target}>{item.target}</code></div></div>)}{c.contents.length === 0 && <small>No local files declared</small>}</div></details>
@@ -132,11 +132,12 @@ function Canvas({ view: originalView, selected, onSelect, onOpen, options, onOpt
   // Inspector resizing must preserve the user's pan and zoom; fit only a new layout.
   if (!layout || !width || !height || fittedLayout.current === layout) return
   if (expansionLayout.current) { fittedLayout.current = layout; expansionLayout.current = false; return }
-  const frame = requestAnimationFrame(() => { fittedLayout.current = layout; void fitView({ padding: 0.18, duration: 0, maxZoom: 1 }) })
+  const frame = requestAnimationFrame(() => { fittedLayout.current = layout; void fitView({ padding: 0.18, duration: 0, minZoom: layout.nodes.length > 30 ? 0.45 : 0.08, maxZoom: 1 }) })
   return () => cancelAnimationFrame(frame)
  }, [layout, fitView, width, height])
  return <ContainerExpansion.Provider value={{ expanded, toggle: toggleExpanded }}><SchemaInteraction.Provider value={schemaInteraction}><div className="graph-canvas-shell">
   <div className="graph-canvas-header">
+   {view.nodes.length > 30 && <p className="large-graph-notice">Large graph · Initial zoom keeps labels readable. Pan to explore, use Fit view for the full map, or select a node and choose Selected node.</p>}
    <div className="connection-summary" aria-live="polite" title={selection ? `${selection.label} · ${incoming} incoming · ${outgoing} outgoing · ${shown.size}/${view.edges.length} connections shown · ${layoutView.nodes.length}/${view.nodes.length} nodes` : undefined}>
     {selection ? <><strong>{selection.label}</strong><span className="incoming-key">{incoming} incoming</span><span className="outgoing-key">{outgoing} outgoing</span><span>{shown.size}/{view.edges.length} connections shown · {layoutView.nodes.length}/{view.nodes.length} nodes</span></> : <span>{imports ? `${overviewEdges.length} of ${view.edges.length} imports shown` : 'Select a node to inspect its connections'}</span>}
    </div>
