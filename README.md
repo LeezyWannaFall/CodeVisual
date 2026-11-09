@@ -151,8 +151,10 @@ Local copies and bind mounts link to discovered Go/Python modules. `.dockerignor
 and Dockerfile-specific ignore rules filter copy associations. External paths,
 remote build contexts, image filesystems, RUN output, archive extraction, and
 compiled artifacts are not inspected. Multi-stage COPY shows the source stage;
-it does not claim a generated binary contains particular source files. Unsupported
-heredocs and path-changing copy flags are diagnosed. Nothing is built, pulled,
+it does not claim a generated binary contains particular source files. Literal ARG/ENV values support simple WORKDIR and COPY/ADD substitutions. Local
+COPY --exclude filters known code associations; COPY --parents maps known code
+files to preserved destination paths, including /./ pivots. Unknown variables,
+heredocs, and stage-filesystem-dependent mappings are diagnosed. Nothing is built, pulled,
 started, or executed by the Docker analyzer.
 
 ## Analysis limits
@@ -230,6 +232,13 @@ artifacts without creating a release. No release is published automatically.
 
 Built with Go, chi, React, TypeScript, XYFlow, and ELK. The frontend is embedded
 in the binary; no runtime CDN is needed.
+
+Repeated diagnostic causes are grouped with occurrence counts and expandable
+locations. Source-loading failures and analysis limitations have separate labels.
+A Go build/loader version mismatch is reported once per module. For large graphs,
+initial zoom favors readable labels; use Fit view for the complete map, Selected
+node for direct neighbors, or directory navigation to explore smaller groups.
+Declaration documentation remains available in the inspector.
 
 ## License
 
