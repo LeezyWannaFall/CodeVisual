@@ -118,7 +118,7 @@ func (Analyzer) Analyze(ctx context.Context, p *project.Project) (graph.Analysis
 					continue
 				}
 				target, ok := internal[path]
-				if !ok && (path == p.ModulePath || strings.HasPrefix(path, p.ModulePath+"/")) {
+				if !ok && p.InternalImport(path) {
 					target = graph.ID("package", path)
 					addNode(graph.Node{ID: target, Kind: "package", Label: filepath.Base(path), ParentID: moduleID, Attributes: graph.Attributes{ImportPath: path, Unresolved: true}})
 					addEdge(graph.Link("contains", moduleID, target, nil))

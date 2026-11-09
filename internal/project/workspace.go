@@ -71,6 +71,9 @@ func Open(ctx context.Context, input string, tags []string) (*Project, error) {
 			return nil, fmt.Errorf("go.mod has no module directive")
 		}
 		p.ModulePath = mf.Module.Mod.Path
+		for _, dependency := range mf.Require {
+			p.RequiredModules = append(p.RequiredModules, dependency.Mod.Path)
+		}
 		p.HasGoModule = true
 	}
 	goDirs := map[string]bool{}
