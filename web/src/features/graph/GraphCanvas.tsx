@@ -25,7 +25,7 @@ function Entity({ data }: NodeProps<VisualNode>) {
    <div className="container-title"><Icon name="container"/><strong className="node-name">{n.label}</strong><small>{n.kind === 'dockerStage' ? 'BUILD STAGE' : c.type === 'dockerfile' ? 'BUILD CONFIG' : 'SERVICE'}</small></div>
    {data.completion && <div className="container-task-badge">✓ Completion task · declared</div>}<div className="container-section-label">BASE IMAGE</div><code className="container-image">{c.image || c.dockerfile || 'Declared service'}</code>
    {c.ports.length > 0 && <div className="container-ports"><span>PORTS</span>{c.ports.map(port => <code key={port}>{port}</code>)}</div>}
-   <details open={expansion.expanded.has(n.id)} onToggle={event => expansion.toggle(n.id, event.currentTarget.open)} className="container-file-map nodrag nowheel" onClick={event => event.stopPropagation()}><summary onClick={event => { event.preventDefault(); expansion.toggle(n.id, !expansion.expanded.has(n.id)) }}>File transfers <span>{c.contents.length}</span></summary><div className="container-card-contents">{c.contents.map((item,i) => <div className="file-transfer" key={i}><span className="transfer-kind">{item.kind === 'stage' ? 'From build stage' : item.kind === 'bind' ? 'Local mount' : item.kind.toUpperCase()}</span><div className="transfer-route"><code className="transfer-cloud" title={item.source}>{item.source || 'volume'}</code><span className="transfer-arrow" aria-label="to">→</span><code className="transfer-cloud destination" title={item.target}>{item.target}</code></div></div>)}{c.contents.length === 0 && <small>No local files declared</small>}</div></details>
+   <details open={expansion.expanded.has(n.id)} className="container-file-map nodrag nowheel" onDoubleClick={event => event.stopPropagation()} onClick={event => event.stopPropagation()}><summary onClick={event => { event.preventDefault(); expansion.toggle(n.id, !expansion.expanded.has(n.id)) }}>File transfers <span>{c.contents.length}</span></summary><div className="container-card-contents">{c.contents.map((item,i) => <div className="file-transfer" key={i}><span className="transfer-kind">{item.kind === 'stage' ? 'From build stage' : item.kind === 'bind' ? 'Local mount' : item.kind.toUpperCase()}</span><div className="transfer-route"><code className="transfer-cloud" title={item.source}>{item.source || 'volume'}</code><span className="transfer-arrow" aria-label="to">→</span><code className="transfer-cloud destination" title={item.target}>{item.target}</code></div></div>)}{c.contents.length === 0 && <small>No local files declared</small>}</div></details>
   </div>
  }
  if (table) return <div className={`entity-node er-table table-map-node nopan ${data.active ? 'active' : ''}`}>
@@ -46,7 +46,7 @@ function Entity({ data }: NodeProps<VisualNode>) {
 const nodeTypes = { entity: Entity }
 const edgeTypes = { routed: RoutedEdge }
 
-function Canvas({ view: originalView, selected, onSelect, onOpen, options, onOptionsChange }: Props) {
+function Canvas({ view: originalView, selected, onSelect, onOpen, options, onOptionsChange, onClearSelection }: Props) {
  const schemaInteraction = useMemo(() => {
   const indexes = new Map<string, GraphNode[]>()
   for (const edge of originalView.edges.filter(e => e.kind === 'indexes')) {
@@ -62,11 +62,9 @@ function Canvas({ view: originalView, selected, onSelect, onOpen, options, onOpt
  const height = useStore(s => s.height)
  const [nodes, setNodes, onNodesChange] = useNodesState<VisualNode>([])
  const [edges, setEdges, onEdgesChange] = useEdgesState<RoutedGraphEdge>([])
- const expansionLayout = useRef(false)
  const [expanded, setExpanded] = useState<Set<string>>(new Set())
  const toggleExpanded = (id: string, open: boolean) => setExpanded(previous => {
   if (previous.has(id) === open) return previous
-  expansionLayout.current = true
   const next = new Set(previous); if (open) next.add(id); else next.delete(id); return next
  })
  const [layout, setLayout] = useState<GraphLayout | null>(null)
@@ -101,17 +99,16 @@ function Canvas({ view: originalView, selected, onSelect, onOpen, options, onOpt
   import('./layoutWorker').then(async ({ createLayoutEngine }) => {
    if (cancelled) return
    engine = createLayoutEngine()
-   const completionIDs = new Set(view.edges.filter(e => e.label === 'service_completed_successfully').map(e => e.targetId))
-   const next = await layoutGraph(layoutView, engine, expanded, completionIDs)
+   const next = await layoutGraph(layoutView, engine)
    if (cancelled) return
    setNodes(next.nodes.map(n => ({
-    id: n.entity.id, type: 'entity', position: { x: n.x, y: n.y }, className: n.entity.attributes.container ? 'container-flow-node' : undefined, style: { width: n.width, height: n.height },
+    id: n.entity.id, type: 'entity', position: { x: n.x, y: n.y }, className: n.entity.attributes.container ? 'container-flow-node' : undefined, style: { width: n.width, height: n.entity.attributes.container ? undefined : n.height },
     data: { entity: n.entity, ports: n.ports, active: false, muted: false, completion: view.edges.some(e => e.targetId === n.entity.id && e.label === "service_completed_successfully"), incoming: view.edges.filter(e => e.targetId === n.entity.id).length, outgoing: view.edges.filter(e => e.sourceId === n.entity.id).length, imports },
    })))
    setLayout(next)
   }).catch(e => { if (!cancelled) setError(e.message ?? 'Could not arrange this graph.') }).finally(() => { stop(); if (!cancelled) setArranging(false) })
   return () => { cancelled = true; stop() }
- }, [layoutView, view, revision, setNodes, imports, expanded])
+ }, [layoutView, view, revision, setNodes, imports])
  useEffect(() => {
   setNodes(ns => ns.map(n => ({ ...n, data: { ...n.data, active: n.id === selection?.id, muted: mode === 'selection' && related.size > 0 && !related.has(n.id) } })))
   if (!layout) return
@@ -131,8 +128,7 @@ function Canvas({ view: originalView, selected, onSelect, onOpen, options, onOpt
  useEffect(() => {
   // Inspector resizing must preserve the user's pan and zoom; fit only a new layout.
   if (!layout || !width || !height || fittedLayout.current === layout) return
-  if (expansionLayout.current) { fittedLayout.current = layout; expansionLayout.current = false; return }
-  const frame = requestAnimationFrame(() => { fittedLayout.current = layout; void fitView({ padding: 0.18, duration: 0, minZoom: layout.nodes.length > 30 ? 0.45 : 0.08, maxZoom: 1 }) })
+  const frame = requestAnimationFrame(() => { fittedLayout.current = layout; void fitView({ padding: 0.18, duration: 0, minZoom: layout.nodes.length > 30 ? 0.85 : 0.08, maxZoom: 1 }) })
   return () => cancelAnimationFrame(frame)
  }, [layout, fitView, width, height])
  return <ContainerExpansion.Provider value={{ expanded, toggle: toggleExpanded }}><SchemaInteraction.Provider value={schemaInteraction}><div className="graph-canvas-shell">
@@ -142,6 +138,7 @@ function Canvas({ view: originalView, selected, onSelect, onOpen, options, onOpt
     {selection ? <><strong>{selection.label}</strong><span className="incoming-key">{incoming} incoming</span><span className="outgoing-key">{outgoing} outgoing</span><span>{shown.size}/{view.edges.length} connections shown · {layoutView.nodes.length}/{view.nodes.length} nodes</span></> : <span>{imports ? `${overviewEdges.length} of ${view.edges.length} imports shown` : 'Select a node to inspect its connections'}</span>}
    </div>
    <div className="connection-tools">
+    {view.nodes.length > 30 && <button className="readable-view-button" onClick={() => void fitView({ padding: .18, duration: 200, minZoom: .85, maxZoom: 1 })}>Readable view</button>}
     {imports && <select aria-label="Import detail" value={detail} disabled={mode === 'selection' && !!selection} onChange={e => onOptionsChange({ importDetail: e.target.value as 'simplified' | 'all' })}><option value="simplified">Simplified</option><option value="all">All imports</option></select>}
     <div className="connection-mode" role="group" aria-label="Visible connections">
      <button aria-pressed={mode === 'all' || !selection} onClick={() => onOptionsChange({ connectionMode: 'all' })}>All connections</button>
@@ -152,12 +149,12 @@ function Canvas({ view: originalView, selected, onSelect, onOpen, options, onOpt
    {imports && detail === 'simplified' && mode === 'all' && reduced.length < view.edges.length && <p className="simplification-note">{view.edges.length - reduced.length} direct imports hidden where another dependency path exists. Select All imports for the complete graph.</p>}
   </div>
   <div className="graph-canvas-viewport">
- <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onNodeClick={(_, n) => onSelect(n.data.entity)} onNodeDoubleClick={(_, n) => onOpen(n.data.entity)} nodesConnectable={false} nodesDraggable={false} deleteKeyCode={null} colorMode="dark" minZoom={0.08} maxZoom={2} proOptions={{ hideAttribution: true }}>
+ <ReactFlow onPaneClick={onClearSelection} nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onNodeClick={(_, n) => onSelect(n.data.entity)} onNodeDoubleClick={(_, n) => onOpen(n.data.entity)} nodesConnectable={false} nodesDraggable={false} deleteKeyCode={null} colorMode="dark" minZoom={0.08} maxZoom={2} proOptions={{ hideAttribution: true }}>
   <Background variant={BackgroundVariant.Dots} color="var(--graph-dots, #272727)" gap={22} size={1}/>
   {arranging && !layout && <div className="layout-status" role="status">Arranging nodes and routing connections…</div>}
   {error && <div className="layout-status error-note" role="alert">{error}<button onClick={() => setRevision(v => v + 1)}>Retry layout</button></div>}
   <Controls showInteractive={false}/>
  </ReactFlow></div></div></SchemaInteraction.Provider></ContainerExpansion.Provider>
 }
-interface Props { options: GraphOptions; onOptionsChange: (options: Partial<GraphOptions>) => void; view: GraphView; selected: GraphNode | null; onSelect: (n: GraphNode) => void; onOpen: (n: GraphNode) => void }
+interface Props { onClearSelection?: () => void; options: GraphOptions; onOptionsChange: (options: Partial<GraphOptions>) => void; view: GraphView; selected: GraphNode | null; onSelect: (n: GraphNode) => void; onOpen: (n: GraphNode) => void }
 export function GraphCanvas(props: Props) { return <ReactFlowProvider><Canvas {...props}/></ReactFlowProvider> }

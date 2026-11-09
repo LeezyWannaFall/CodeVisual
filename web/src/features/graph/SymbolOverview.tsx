@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { Children, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { GraphNode, GraphView } from '../../api/types'
 import { KindBadge } from '../../components/Icon'
 
@@ -15,6 +15,18 @@ export function groupSymbols(view: GraphView) {
  }
  return { owners, methods, standalone: view.nodes.filter(n => !owners.includes(n) && !owned.has(n.id)) }
 }
+function SymbolColumns({ children }: { children: ReactNode }) {
+ const ref = useRef<HTMLDivElement>(null)
+ const [count, setCount] = useState(1)
+ useEffect(() => {
+  if (!ref.current || typeof ResizeObserver === 'undefined') return
+  const observer = new ResizeObserver(([entry]) => setCount(Math.max(1, Math.floor((entry.contentRect.width + 14) / 259))))
+  observer.observe(ref.current)
+  return () => observer.disconnect()
+ }, [])
+ const cards = Children.toArray(children)
+ return <div ref={ref} className="symbol-groups" style={{ gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))` }}>{Array.from({ length: count }, (_, column) => <div className="symbol-column" key={column}>{cards.filter((_, index) => index % count === column)}</div>)}</div>
+}
 export function SymbolOverview({ view, selected, onSelect, inline = false }: { view: GraphView; selected: GraphNode | null; onSelect: (node: GraphNode) => void; inline?: boolean }) {
  const { owners, methods, standalone } = useMemo(() => groupSymbols(view), [view])
  function row(n: GraphNode) {
@@ -25,13 +37,13 @@ export function SymbolOverview({ view, selected, onSelect, inline = false }: { v
   {[
    { label: 'Structs & types', nodes: owners.filter(n => n.kind !== 'interface') },
    { label: 'Interfaces', nodes: owners.filter(n => n.kind === 'interface') },
-  ].filter(group => group.nodes.length > 0).map(group => <section className="symbol-layer" key={group.label} aria-label={group.label}><h3>{group.label}<span>{group.nodes.length}</span></h3><div className="symbol-groups">{group.nodes.map(n => { const children = methods.get(n.id) ?? []; return <section className={`symbol-group ${selected?.id === n.id ? 'selected' : ''}`} key={n.id}>
+  ].filter(group => group.nodes.length > 0).map(group => <section className="symbol-layer" key={group.label} aria-label={group.label}><h3>{group.label}<span>{group.nodes.length}</span></h3><SymbolColumns>{group.nodes.map(n => { const children = methods.get(n.id) ?? []; return <section className={`symbol-group ${selected?.id === n.id ? 'selected' : ''}`} key={n.id}>
    <button className="symbol-group-title" title={n.label} onClick={() => onSelect(n)}><KindBadge kind={n.kind}/><span><strong>{n.label}</strong><small>{n.kind}{n.kind !== 'interface' && n.attributes.members?.length ? ` · ${n.attributes.members.length} ${n.attributes.members.length === 1 ? 'member' : 'members'}` : ''}</small></span></button>
    {n.kind !== 'interface' && children.length === 0 && <div className="symbol-no-methods"><span>No methods declared</span><span>0</span></div>}
 
    {n.kind !== 'interface' && children.length > 0 && <details className="symbol-methods" open={children.some(n => n.id === selected?.id)}><summary>Methods <span>{children.length}</span></summary><div>{children.sort((a,b) => a.label.localeCompare(b.label)).map(row)}</div></details>}
 
-  </section> })}</div></section>)}
+  </section> })}</SymbolColumns></section>)}
   {standalone.length > 0 && <details className="symbol-standalone" open={owners.length === 0 || standalone.some(n => n.id === selected?.id)}><summary>Functions & other declarations <span>{standalone.length}</span></summary><div className="symbol-function-list">{standalone.map(row)}</div></details>}
  </div>
 }

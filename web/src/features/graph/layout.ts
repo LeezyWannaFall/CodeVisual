@@ -11,7 +11,7 @@ const portId = (edge: GraphEdge, side: 'in' | 'out') => `${side}:${edge.id}`
 
 // Every relationship gets its own port. Keeping ELK's routed bend points is
 // essential: drawing a new smoothstep path would discard obstacle avoidance.
-export async function layoutGraph(view: GraphView, engine: LayoutEngine, expanded: ReadonlySet<string> = new Set(), completion: ReadonlySet<string> = new Set()): Promise<GraphLayout> {
+export async function layoutGraph(view: GraphView, engine: LayoutEngine): Promise<GraphLayout> {
  const nodes = [...view.nodes].sort((a, b) => a.id.localeCompare(b.id))
  const edges = [...view.edges].sort((a, b) => a.id.localeCompare(b.id))
  const input: ElkNode = {
@@ -38,11 +38,12 @@ export async function layoutGraph(view: GraphView, engine: LayoutEngine, expande
    return {
     id: n.id,
     width: n.attributes.table ? 280 : n.attributes.index ? 300 : 260,
-    height: Math.max(n.attributes.container ? 150 + (completion.has(n.id) ? 30 : 0) + (n.attributes.container.ports.length ? 32 : 0) + (expanded.has(n.id) ? Math.min(180, Math.max(40, n.attributes.container.contents.length * 100)) : 0) : n.attributes.table ? 34 + n.attributes.table.columns.length * 26 + (n.attributes.members?.length ? 5 + n.attributes.members.length * 24 : 0) : n.attributes.index ? 176 : n.attributes.possible || (n.attributes.resolution && n.attributes.resolution !== 'static') ? 136 : 112, (Math.max(incoming.length, outgoing.length) + 1) * 18),
-    layoutOptions: { 'elk.portConstraints': n.attributes.table ? 'FIXED_POS' : 'FIXED_ORDER' },
+    // Reserve room for the disclosure so expanding it never reruns global routing.
+    height: Math.max(n.attributes.container ? 440 : n.attributes.table ? 34 + n.attributes.table.columns.length * 26 + (n.attributes.members?.length ? 5 + n.attributes.members.length * 24 : 0) : n.attributes.index ? 176 : n.attributes.possible || (n.attributes.resolution && n.attributes.resolution !== 'static') ? 136 : 112, (Math.max(incoming.length, outgoing.length) + 1) * 18),
+    layoutOptions: { 'elk.portConstraints': n.attributes.table || n.attributes.container ? 'FIXED_POS' : 'FIXED_ORDER' },
     ports: [
-     ...incoming.map(e => ({ id: portId(e, 'in'), ...(n.attributes.table ? { x: 0, y: columnPortY(n, e.targetColumn) } : {}), width: 0, height: 0, layoutOptions: { 'elk.port.side': 'WEST' } })),
-     ...outgoing.map(e => ({ id: portId(e, 'out'), ...(n.attributes.table ? { x: 280, y: columnPortY(n, e.sourceColumn) } : {}), width: 0, height: 0, layoutOptions: { 'elk.port.side': 'EAST' } })),
+     ...incoming.map((e, i) => ({ id: portId(e, 'in'), ...(n.attributes.table ? { x: 0, y: columnPortY(n, e.targetColumn) } : n.attributes.container ? { x: 0, y: 45 + (i + 1) * 14 } : {}), width: 0, height: 0, layoutOptions: { 'elk.port.side': 'WEST' } })),
+     ...outgoing.map((e, i) => ({ id: portId(e, 'out'), ...(n.attributes.table ? { x: 280, y: columnPortY(n, e.sourceColumn) } : n.attributes.container ? { x: 260, y: 45 + (i + 1) * 14 } : {}), width: 0, height: 0, layoutOptions: { 'elk.port.side': 'EAST' } })),
     ],
    }
   }),
